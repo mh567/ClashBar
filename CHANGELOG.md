@@ -1,3 +1,28 @@
+## v1.0.0
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.0.0-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 本仓库（mh567/ClashBar）是 Sitoi/ClashBar 的 fork，从这个版本起改用独立版本序列，避免与上游的 `0.3.x` 标签冲突。内容以稳定性修复为主：修正日志搜索遗漏早期条目、端口自动保存丢失、退出与启动阶段的主线程阻塞，补齐发布流程与图标打包缺陷，并引入本地自动化测试。安装包为 ad-hoc 签名，首次打开可能需要在「系统设置 → 隐私与安全性」中放行。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **本地自动化测试**：新增 `ClashBarTests` 共 42 个用例与 `make test` 入口，覆盖版本号解析、端口自动保存判定、日志筛选、SSID 规则与接口解码容错；脚本级用例真实执行仓库脚本，校验版本 bump 推导、`bash -n` 语法与图标流水线。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **退出与启动不再卡顿**：退出路径原先在主线程累计可等待约 5 秒，现将系统代理清理、内核停止与日志落盘全部改为有界超时，预算收敛到约 1.6 秒；启动阶段的二进制解析（含 `gunzip`）移出主线程。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **日志搜索覆盖全部记录**：筛选改为作用于全部内存日志，仅在渲染时截断，并显示真实命中数，不再出现有记录却搜不到的情况。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **端口自动保存丢失**：修复同步进行中或收起面板时，端口修改被静默丢弃的问题。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **发布版本号推导失效**：修复 CI 无法匹配带 emoji 前缀的提交信息，导致自动发版必然失败的问题。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **应用图标缺少 Retina 变体**：恢复 @2x 图标生成，并按源图尺寸设上限避免插值模糊。
+
+---
+
 ## v0.3.6
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v0.3.6-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
