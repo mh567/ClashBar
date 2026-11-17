@@ -12,39 +12,39 @@
   <img alt="Swift" src="https://img.shields.io/badge/Swift-6.2-F05138?style=flat-square&logo=swift" />
   <img alt="Build" src="https://img.shields.io/badge/Build-SwiftPM-0A84FF?style=flat-square" />
   <img alt="i18n" src="https://img.shields.io/badge/i18n-zh--Hans%20%7C%20en-34C759?style=flat-square" />
-  <a href="https://github.com/Sitoi/ClashBar/releases" target="_blank" rel="noopener noreferrer">
-    <img alt="Version" src="https://img.shields.io/github/v/release/Sitoi/ClashBar?style=flat-square&logo=github" />
+  <a href="https://github.com/mh567/ClashBar/releases" target="_blank" rel="noopener noreferrer">
+    <img alt="Version" src="https://img.shields.io/github/v/release/mh567/ClashBar?style=flat-square&logo=github" />
   </a>
-  <a href="https://github.com/Sitoi/ClashBar/stargazers" target="_blank" rel="noopener noreferrer">
-    <img alt="Stars" src="https://img.shields.io/github/stars/Sitoi/ClashBar?style=flat-square&logo=github" />
+  <a href="https://github.com/mh567/ClashBar/stargazers" target="_blank" rel="noopener noreferrer">
+    <img alt="Stars" src="https://img.shields.io/github/stars/mh567/ClashBar?style=flat-square&logo=github" />
   </a>
-  <a href="https://github.com/Sitoi/ClashBar/issues" target="_blank" rel="noopener noreferrer">
-    <img alt="Issues" src="https://img.shields.io/github/issues/Sitoi/ClashBar?style=flat-square&logo=github" />
+  <a href="https://github.com/mh567/ClashBar/issues" target="_blank" rel="noopener noreferrer">
+    <img alt="Issues" src="https://img.shields.io/github/issues/mh567/ClashBar?style=flat-square&logo=github" />
   </a>
-  <a href="https://github.com/Sitoi/ClashBar/pulls" target="_blank" rel="noopener noreferrer">
-    <img alt="PRs" src="https://img.shields.io/github/issues-pr/Sitoi/ClashBar?style=flat-square&logo=github" />
+  <a href="https://github.com/mh567/ClashBar/pulls" target="_blank" rel="noopener noreferrer">
+    <img alt="PRs" src="https://img.shields.io/github/issues-pr/mh567/ClashBar?style=flat-square&logo=github" />
   </a>
-  <a href="https://github.com/Sitoi/ClashBar/network/members" target="_blank" rel="noopener noreferrer">
-    <img alt="Forks" src="https://img.shields.io/github/forks/Sitoi/ClashBar?style=flat-square&logo=github" />
+  <a href="https://github.com/mh567/ClashBar/network/members" target="_blank" rel="noopener noreferrer">
+    <img alt="Forks" src="https://img.shields.io/github/forks/mh567/ClashBar?style=flat-square&logo=github" />
   </a>
-  <a href="https://github.com/Sitoi/ClashBar/releases" target="_blank" rel="noopener noreferrer">
-    <img alt="Downloads" src="https://img.shields.io/github/downloads/Sitoi/ClashBar/total?style=flat-square&logo=github" />
+  <a href="https://github.com/mh567/ClashBar/releases" target="_blank" rel="noopener noreferrer">
+    <img alt="Downloads" src="https://img.shields.io/github/downloads/mh567/ClashBar/total?style=flat-square&logo=github" />
   </a>
-  <a href="https://github.com/Sitoi/ClashBar/commits" target="_blank" rel="noopener noreferrer">
-    <img alt="Commit Activity" src="https://img.shields.io/github/commit-activity/m/Sitoi/ClashBar?style=flat-square&logo=github" />
+  <a href="https://github.com/mh567/ClashBar/commits" target="_blank" rel="noopener noreferrer">
+    <img alt="Commit Activity" src="https://img.shields.io/github/commit-activity/m/mh567/ClashBar?style=flat-square&logo=github" />
   </a>
-  <a href="https://github.com/Sitoi/ClashBar/commits" target="_blank" rel="noopener noreferrer">
-    <img alt="Last Commit" src="https://img.shields.io/github/last-commit/Sitoi/ClashBar?style=flat-square&logo=github" />
+  <a href="https://github.com/mh567/ClashBar/commits" target="_blank" rel="noopener noreferrer">
+    <img alt="Last Commit" src="https://img.shields.io/github/last-commit/mh567/ClashBar?style=flat-square&logo=github" />
   </a>
-  <a href="https://github.com/Sitoi/ClashBar/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">
-    <img alt="License" src="https://img.shields.io/github/license/Sitoi/ClashBar?style=flat-square" />
+  <a href="https://github.com/mh567/ClashBar/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">
+    <img alt="License" src="https://img.shields.io/github/license/mh567/ClashBar?style=flat-square" />
   </a>
 </p>
 
 <p>
   🌐 <a href="https://clashbar.sitoi.workers.dev"><strong>文档站</strong></a>
   ·
-  📦 <a href="https://github.com/Sitoi/ClashBar/releases"><strong>Releases</strong></a>
+  📦 <a href="https://github.com/mh567/ClashBar/releases"><strong>Releases</strong></a>
   ·
   💬 <a href="https://t.me/clashbars"><strong>Telegram</strong></a>
 </p>
@@ -77,20 +77,14 @@
 
 **要求：** macOS 13+ 🍎
 
-```sh
-brew tap Sitoi/tap
-brew install --cask clashbar
-```
+从 [Releases](https://github.com/mh567/ClashBar/releases) 下载 `.dmg`，将 `ClashBar.app` 拖入 `/Applications`。
 
-或从 [Releases](https://github.com/Sitoi/ClashBar/releases) 下载 `.dmg`，将 `ClashBar.app` 拖入 `/Applications`。
+> [!NOTE]
+> 本仓库是 [Sitoi/ClashBar](https://github.com/Sitoi/ClashBar) 的 fork，构建产物发布在
+> [本仓库 Releases](https://github.com/mh567/ClashBar/releases)。上游的 Homebrew tap
+> （`brew install --cask clashbar`）安装的是上游版本，与本仓库的构建不同。
 
-卸载：
-
-```sh
-brew uninstall --cask clashbar
-# 同时清除数据
-brew uninstall --zap --cask clashbar
-```
+卸载：删除 `/Applications/ClashBar.app`，并清理 `~/Library/Application Support/clashbar`。
 
 > [!IMPORTANT]
 >
@@ -139,7 +133,7 @@ make dist WITH_CORE=1      # app + dmg
 
 ## 👥 贡献者
 
-[![Contributors](https://contrib.rocks/image?repo=Sitoi/ClashBar)](https://github.com/Sitoi/ClashBar/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=mh567/ClashBar)](https://github.com/mh567/ClashBar/graphs/contributors)
 
 ## 🙏 致谢
 
@@ -148,4 +142,4 @@ make dist WITH_CORE=1      # app + dmg
 
 ## ⭐ Star 趋势
 
-[![Star History Chart](https://star-history.dera.page/svg?repos=Sitoi/ClashBar&type=date&legend=top-left)](https://star-history.dera.page/#Sitoi/ClashBar&type=date&legend=top-left)
+[![Star History Chart](https://star-history.dera.page/svg?repos=mh567/ClashBar&type=date&legend=top-left)](https://star-history.dera.page/#mh567/ClashBar&type=date&legend=top-left)

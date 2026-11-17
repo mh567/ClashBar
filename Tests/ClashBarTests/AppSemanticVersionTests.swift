@@ -52,3 +52,18 @@ final class AppSemanticVersionTests: XCTestCase {
         XCTAssertFalse(AppSemanticVersion("v1.19.30")! >= minimum)
     }
 }
+
+final class AppReleaseSourceTests: XCTestCase {
+    /// A fork must not advertise upstream releases: update checks and links point
+    /// at this repository, otherwise users get sent to install upstream builds.
+    func testReleaseCoordinatesPointAtThisFork() {
+        XCTAssertEqual(AppReleaseSource.owner, "mh567")
+        XCTAssertEqual(AppReleaseSource.repository, "ClashBar")
+        XCTAssertEqual(
+            AppReleaseSource.latestReleaseURL?.absoluteString,
+            "https://api.github.com/repos/mh567/ClashBar/releases/latest")
+        XCTAssertEqual(
+            AppReleaseSource.repositoryPageURL?.absoluteString,
+            "https://github.com/mh567/ClashBar")
+    }
+}

@@ -11,29 +11,19 @@ description: 安装 ClashBar、准备内核、导入配置并完成第一次连�
 
 ## 1. 安装 ClashBar
 
-### Homebrew（推荐）
+### 下载安装包
 
-```sh
-brew tap Sitoi/tap
-brew install --cask clashbar
-```
+从 [GitHub Releases](https://github.com/mh567/ClashBar/releases/latest) 下载最新 `.dmg`，挂载后将 `ClashBar.app` 拖入 `/Applications`。
 
-### 手动安装
-
-从 [GitHub Releases](https://github.com/Sitoi/ClashBar/releases/latest) 下载最新 `.dmg`，挂载后将 `ClashBar.app` 拖入 `/Applications`。
+> [!NOTE]
+> 本仓库是 [Sitoi/ClashBar](https://github.com/Sitoi/ClashBar) 的 fork。上游 Homebrew tap
+> 的 `brew install --cask clashbar` 安装的是上游版本，与本仓库发布的构建不同。
 
 首次打开时，macOS 可能要求确认应用来源；若被 Gatekeeper 拦截，请在 **系统设置 → 隐私与安全性** 中选择「仍要打开」。
 
 ### 卸载
 
-```sh
-brew uninstall --cask clashbar
-
-# 同时清除 cask 相关数据（若通过 Homebrew 安装）
-brew uninstall --zap --cask clashbar
-```
-
-手动安装时可直接将 `ClashBar.app` 移入废纸篓；运行时数据目录见下文与 [配置与订阅](/docs/configuration)。
+删除 `/Applications/ClashBar.app`，并清理 `~/Library/Application Support/clashbar` 即可。
 
 ## 安装与使用前注意事项
 

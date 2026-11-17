@@ -104,7 +104,7 @@ export default function HomePage() {
 
           <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
             <a
-              href="https://github.com/Sitoi/ClashBar/releases"
+              href="https://github.com/mh567/ClashBar/releases"
               className="group inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-white px-7 text-sm font-semibold text-slate-950 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_12px_40px_-8px_rgba(56,189,248,0.45)] transition duration-200 hover:-translate-y-0.5 hover:bg-sky-50"
             >
               <Download className="size-4 transition group-hover:scale-110" />
@@ -112,7 +112,7 @@ export default function HomePage() {
             </a>
             <div className="flex gap-3">
               <a
-                href="https://github.com/Sitoi/ClashBar"
+                href="https://github.com/mh567/ClashBar"
                 className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-5 text-sm font-medium text-white transition duration-200 hover:border-white/20 hover:bg-white/[0.07] sm:flex-none sm:px-6"
               >
                 GitHub
@@ -809,7 +809,7 @@ export default function HomePage() {
                 { label: "快速开始", href: "#quick-start" },
                 {
                   label: "下载",
-                  href: "https://github.com/Sitoi/ClashBar/releases",
+                  href: "https://github.com/mh567/ClashBar/releases",
                   external: true,
                 },
               ]}
@@ -828,12 +828,12 @@ export default function HomePage() {
               links={[
                 {
                   label: "GitHub",
-                  href: "https://github.com/Sitoi/ClashBar",
+                  href: "https://github.com/mh567/ClashBar",
                   external: true,
                 },
                 {
                   label: "Releases",
-                  href: "https://github.com/Sitoi/ClashBar/releases",
+                  href: "https://github.com/mh567/ClashBar/releases",
                   external: true,
                 },
                 {
@@ -843,7 +843,7 @@ export default function HomePage() {
                 },
                 {
                   label: "问题反馈",
-                  href: "https://github.com/Sitoi/ClashBar/issues",
+                  href: "https://github.com/mh567/ClashBar/issues",
                   external: true,
                 },
               ]}
