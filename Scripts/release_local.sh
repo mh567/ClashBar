@@ -98,9 +98,20 @@ if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
 fi
 
 echo "==> Building ${APP_NAME} ${VERSION} (${BUILD_ARCH}, core=${WITH_CORE})"
+
+# Only pass TARGET_ARCH when actually cross-compiling. SwiftPM puts native output
+# under .build/out/Products/<Config> behind a .build/release symlink, while
+# package_app.sh looks for .build/<arch>-apple-macosx/release when TARGET_ARCH is
+# set, so passing the host arch here makes the packaging step fail to find its
+# output.
+if [ -n "$TARGET_ARCH" ] && [ "$TARGET_ARCH" != "$HOST_ARCH" ]; then
+  export TARGET_ARCH
+else
+  unset TARGET_ARCH
+fi
+
 APP_VERSION="$VERSION" \
   BUILD_NUMBER="$VERSION" \
-  TARGET_ARCH="$BUILD_ARCH" \
   PREPARE_MIHOMO_BINARY="$WITH_CORE" \
   BUNDLE_MIHOMO_BINARY="$WITH_CORE" \
   REQUIRE_MIHOMO_BINARY="$WITH_CORE" \
