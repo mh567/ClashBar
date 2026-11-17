@@ -16,6 +16,7 @@ ClashBar 是原生 macOS 菜单栏代理客户端（SwiftUI + AppKit），网络
 make build                 # 产出 dist/ClashBar.app（默认不打包 mihomo）
 make build WITH_CORE=1     # 连同 mihomo 二进制一起打包
 make dist WITH_CORE=1      # app + dmg
+make test                  # 跑 ClashBarTests（swift test）
 make format                # swiftformat . + swiftlint lint
 make clean                 # 清理 .build / dist / .swiftpm / Packages
 
@@ -23,9 +24,10 @@ swift build                # 只编译，不打包；最快的验证手段
 swift build -c release
 ```
 
-- 提交前至少跑 `swift build`；改动涉及格式时跑 `make format`（先 format 再 lint，两者必须都通过）。
+- 提交前至少跑 `swift build` 和 `make test`；改动涉及格式时跑 `make format`（先 format 再 lint，两者必须都通过）。
 - 打包链路：`Scripts/build.sh <preprocess|package|dmg|app|all>`，内部串联 `preprocess.sh`（下载 / 校验 mihomo、生成 `.icns`）、`package_app.sh`（组装 `.app`）、`make_dmg.sh`。
-- 仓库没有测试 target，也没有单元测试。验证方式以编译通过 + 手工运行 `.app` 为主，不要假装存在测试套件。
+- 测试位于 `Tests/ClashBarTests`，通过 `@testable import ClashBar` 直接测 executable target 的内部类型，不需要拆分库 target。新增纯逻辑优先补测试；`ScriptToolingTests` 会真实执行仓库脚本。
+- 本机可能没有 `swiftformat` / `swiftlint`，此时不要擅自安装依赖，说明未运行即可。
 - 文档站位于 `docs/`（Next.js + Fumadocs，pnpm）：`cd docs && pnpm dev`，校验用 `pnpm types:check`。
 
 ## 代码结构
@@ -89,7 +91,10 @@ docs/               文档站
 - 与上游必然冲突的改动（仓库标识、发布流程）放 `fork/*` 分支，不要合进 `main`。
 - 提交信息沿用仓库风格：`<emoji> <type>: <中文摘要>`，例如 `✨ feat: 更新 v0.3.6，修复系统代理 Helper 安装问题`。
 - 只有在用户明确要求时才提交 git；不要主动 commit、push 或打 tag。
-- 版本发布由 GitHub Actions 驱动：`.github/workflows/release-dmg.yml`（tag 触发，构建 arm64 / x86_64 各含 Core 与不含 Core 的 DMG，并更新 Homebrew cask）与 `release-dmg-beta.yml`（从 `alpha` 分支手动触发，发布 prerelease）。
+- 版本发布优先走本地：`Scripts/release_local.sh <tag>`，完成构建 → 校验 → 创建或追加 GitHub Release。CI 的 macOS runner 按产物计配额，免费账户经常排队超时，不要把发版押在 CI 上。
+- tag 必须是纯 `x.y.z`（可带 `v`），且使用独立序列（目前 `v1.x`）避开上游的 `0.3.x`。带其他前缀（如 `fork-v1.0.0`）会让 `AppSemanticVersion` 解析失败，应用内更新检查随之失效。
+- 发版前必须先补 `CHANGELOG.md` 顶部小节，否则 `Scripts/generate_release_notes.sh` 直接退出，`release` 作业失败。
+- CI 的 `release-dmg.yml` 构建矩阵当前只保留 arm64 含 Core 单产物；恢复其他变体时要同步改 `Scripts/generate_release_notes.sh` 的 `RELEASE_VARIANTS`，否则下载表格会链接到未构建的文件。
 - 每个版本需要在 `CHANGELOG.md` 顶部补一节：版本标题、徽章行、一段 `>` 摘要，再按「✨ 新增功能 / 🚀 优化改进 / 🐞 修复问题」分类，每条前置对应徽章图片。文档站的更新日志页直接解析该文件，格式不一致会导致解析失败。
 - 发版时需要同步更新 `CHANGELOG.md` 与文档站相关内容；`docs/content/docs/changelog.mdx` 为自动生成，不手工维护内容。
 
@@ -100,3 +105,9 @@ docs/               文档站
 - 菜单栏 UI 有固定宽度与高度上报逻辑（`HeightReportingModifier`、`PopoverLayoutModel`），改动布局时要验证面板尺寸不抖动。
 - 快捷操作菜单的 `.disabled(...)` 状态需要观察 `AppViewModel`，历史上因为内联在 `App` 里导致状态冻结；新增命令请走 `AppCommands`。
 - 状态栏流量曲线使用固定 60 点滑动窗口，不要改成按数据长度拉伸。
+- 本机构建不要传 `TARGET_ARCH`：SwiftPM 原生产物在 `.build/out/Products/<Config>`（经 `.build/release` 符号链接暴露），而 `package_app.sh` 收到 `TARGET_ARCH` 会去找 `.build/<arch>-apple-macosx/release`，打包阶段报「Build output not found」。只在交叉编译时传。
+- `DMG_SUFFIX` 只被 `make_dmg.sh` 直接读取，`build.sh` 不转发；调用方需自行 export，否则产物名为 `ClashBar-<version>.dmg`，与发布说明链路对不上。
+- `dist/*.sha256` 内记录的是裸文件名，`shasum -c` 需在 `dist` 目录内执行。
+- 仓库同时配置了 `origin` 与 `upstream`，`gh` 会默认解析到上游 `Sitoi/ClashBar`；发布相关命令必须显式传 `-R mh567/ClashBar` 或设 `GH_REPO`。
+- `gh run list` 不显示 tag 触发的运行；查 tag 构建要 `gh run view <id>` 或看 commit 的 check-runs。
+- 产物为 ad-hoc 签名，未 notarize，用户首次打开需在「系统设置 → 隐私与安全性」放行。Helper 的 XPC 校验用 Team ID 比对，ad-hoc 下两边都是 `none` 即通过，属继承自上游的既有行为。
