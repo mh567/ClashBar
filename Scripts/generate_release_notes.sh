@@ -44,6 +44,57 @@ PY
 repo_url="https://github.com/${GITHUB_REPOSITORY}"
 download_base="${repo_url}/releases/download/${tag}"
 
+# Artifacts actually produced by the release workflow's build matrix. Keep this
+# in sync with the matrix in .github/workflows/release-dmg.yml: listing a variant
+# here that is not built yields a dead download link.
+RELEASE_VARIANTS="${RELEASE_VARIANTS:-apple-silicon}"
+
+labels_for_variant() {
+  case "$1" in
+    apple-silicon | apple-silicon-no-core)
+      printf 'Apple Silicon|Apple_Silicon|M系列芯片|0071E3|apple'
+      ;;
+    intel | intel-no-core)
+      printf 'Intel|Intel|x86__64|0071C5|intel'
+      ;;
+    *)
+      printf ''
+      ;;
+  esac
+}
+
+download_table() {
+  local row_variants=" $RELEASE_VARIANTS "
+  local arch variant labels
+
+  for arch in apple-silicon intel; do
+    local core_link="" nocore_link=""
+    local label="" badge_name="" badge_value="" badge_color="" logo=""
+
+    for variant in "${arch}" "${arch}-no-core"; do
+      labels="$(labels_for_variant "$variant")"
+      [ -n "$labels" ] || continue
+
+      case "$row_variants" in
+        *" $variant "*)
+          if [ "$variant" = "$arch" ]; then
+            core_link="[ClashBar-${version}-${variant}.dmg](${download_base}/ClashBar-${version}-${variant}.dmg)"
+          else
+            nocore_link="[ClashBar-${version}-${variant}.dmg](${download_base}/ClashBar-${version}-${variant}.dmg)"
+          fi
+          ;;
+      esac
+    done
+
+    [ -n "$core_link$nocore_link" ] || continue
+
+    IFS='|' read -r label badge_name badge_value badge_color logo <<< "$(labels_for_variant "$arch")"
+    printf '| ![%s](https://img.shields.io/badge/%s-%s-%s?style=flat-square&logo=%s&logoColor=white) | %s | %s |\n' \
+      "$label" "$badge_name" "$badge_value" "$badge_color" "$logo" \
+      "${core_link:-—}" "${nocore_link:-—}"
+  done
+}
+
 cat >"$output_path" <<EOF
 ## 更新内容
 
@@ -55,7 +106,6 @@ ${changelog_section}
 
 | 🖥 平台架构 (Architecture) | 📦 内置 Mihomo 内核 (默认推荐) | 🛠️ 无内核纯净版 (适合高阶用户) |
 | :--- | :--- | :--- |
-| ![Apple Silicon](https://img.shields.io/badge/Apple_Silicon-M系列芯片-0071E3?style=flat-square&logo=apple&logoColor=white) | [ClashBar-${version}-apple-silicon.dmg](${download_base}/ClashBar-${version}-apple-silicon.dmg) | [ClashBar-${version}-apple-silicon-no-core.dmg](${download_base}/ClashBar-${version}-apple-silicon-no-core.dmg) |
-| ![Intel](https://img.shields.io/badge/Intel-x86__64-0071C5?style=flat-square&logo=intel&logoColor=white) | [ClashBar-${version}-intel.dmg](${download_base}/ClashBar-${version}-intel.dmg) | [ClashBar-${version}-intel-no-core.dmg](${download_base}/ClashBar-${version}-intel-no-core.dmg) |
+$(download_table)
 
 EOF

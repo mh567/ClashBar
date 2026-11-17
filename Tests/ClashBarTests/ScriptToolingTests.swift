@@ -204,3 +204,40 @@ extension ScriptToolingTests {
             "update-formula must be gated so forks do not attempt to push to upstream's tap")
     }
 }
+
+extension ScriptToolingTests {
+    private func releaseNotes(variants: String?) throws -> String {
+        var environment = ["GITHUB_REPOSITORY": "mh567/ClashBar"]
+        if let variants {
+            environment["RELEASE_VARIANTS"] = variants
+        }
+        let result = try self.run(
+            "/bin/bash",
+            [
+                self.repoRoot.appendingPathComponent("Scripts/generate_release_notes.sh").path,
+                "v1.0.0", "1.0.0", "/dev/stdout",
+            ],
+            environment: environment)
+        XCTAssertEqual(result.status, 0, result.stderr)
+        return result.stdout
+    }
+
+    /// The workflow matrix was trimmed to a single artifact to fit the macOS
+    /// runner quota; the download table must not advertise files that are not built.
+    func testReleaseNotesOnlyListBuiltVariants() throws {
+        let notes = try self.releaseNotes(variants: nil)
+
+        XCTAssertTrue(notes.contains("ClashBar-1.0.0-apple-silicon.dmg"), notes)
+        XCTAssertFalse(notes.contains("apple-silicon-no-core.dmg"), notes)
+        XCTAssertFalse(notes.contains("ClashBar-1.0.0-intel.dmg"), notes)
+    }
+
+    func testReleaseNotesListFullMatrixWhenEnabled() throws {
+        let notes = try self.releaseNotes(
+            variants: "apple-silicon apple-silicon-no-core intel intel-no-core")
+
+        for suffix in ["apple-silicon", "apple-silicon-no-core", "intel", "intel-no-core"] {
+            XCTAssertTrue(notes.contains("ClashBar-1.0.0-\(suffix).dmg"), "missing \(suffix)")
+        }
+    }
+}

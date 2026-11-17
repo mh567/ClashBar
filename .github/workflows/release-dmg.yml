@@ -146,22 +146,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Single artifact on purpose: each variant consumes a macOS runner, and
+          # macOS minutes are quota-limited. Apple Silicon + bundled core is what
+          # essentially everyone wants. Re-add the other entries when the quota
+          # allows, and update RELEASE_VARIANTS in generate_release_notes.sh to
+          # match or the download table will link to missing files.
           - target_arch: arm64
             dmg_suffix: apple-silicon
             artifact_name: dmg-arm64
             bundle_mihomo_binary: '1'
-          - target_arch: arm64
-            dmg_suffix: apple-silicon-no-core
-            artifact_name: dmg-arm64-no-core
-            bundle_mihomo_binary: '0'
-          - target_arch: x86_64
-            dmg_suffix: intel
-            artifact_name: dmg-x86_64
-            bundle_mihomo_binary: '1'
-          - target_arch: x86_64
-            dmg_suffix: intel-no-core
-            artifact_name: dmg-x86_64-no-core
-            bundle_mihomo_binary: '0'
     runs-on: macos-15
     permissions:
       contents: read
