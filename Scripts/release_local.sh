@@ -122,7 +122,11 @@ APP_VERSION="$VERSION" \
 [ -f "$SHA_PATH" ] || { echo "Expected checksum not produced: $SHA_PATH" >&2; exit 1; }
 
 echo "==> Artifact: $DMG_NAME"
-shasum -a 256 -c "$SHA_PATH" >/dev/null || { echo "Checksum mismatch." >&2; exit 1; }
+# shasum -c resolves the file name relative to the checksum file's directory.
+( cd "$ROOT/dist" && shasum -a 256 -c "$(basename "$SHA_PATH")" >/dev/null ) || {
+  echo "Checksum mismatch." >&2
+  exit 1
+}
 echo "    checksum OK"
 
 if [ "$DRAFT" = "1" ]; then
