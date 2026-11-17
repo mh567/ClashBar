@@ -137,11 +137,18 @@ fi
 
 command -v gh >/dev/null 2>&1 || { echo "gh CLI is required to publish." >&2; exit 1; }
 
+# Resolve the publish target explicitly. `gh` falls back to the repository of the
+# configured upstream remote, which for a fork is the wrong project.
+REPO_SLUG="${RELEASE_REPO:-$(git remote get-url origin | sed -E 's#^.*github\.com[:/]##; s#\.git$##')}"
+[ -n "$REPO_SLUG" ] || { echo "Cannot determine target repository from origin." >&2; exit 1; }
+echo "==> Publishing to $REPO_SLUG"
+export GH_REPO="$REPO_SLUG"
+
 git push origin "refs/tags/$TAG"
 
 RELEASE_NOTES="$(mktemp -t clashbar-notes.XXXXXX)"
 trap 'rm -f "$RELEASE_NOTES"' EXIT
-GITHUB_REPOSITORY="$(gh repo view --json nameWithOwner --jq .nameWithOwner)" \
+GITHUB_REPOSITORY="$REPO_SLUG" \
   ./Scripts/generate_release_notes.sh "$TAG" "$VERSION" "$RELEASE_NOTES"
 
 if gh release view "$TAG" >/dev/null 2>&1; then
@@ -150,6 +157,7 @@ if gh release view "$TAG" >/dev/null 2>&1; then
 else
   echo "==> Creating release $TAG"
   gh release create "$TAG" "$DMG_PATH" "$SHA_PATH" \
+    --repo "$REPO_SLUG" \
     --title "${APP_NAME} ${VERSION}" \
     --notes-file "$RELEASE_NOTES" \
     --verify-tag
