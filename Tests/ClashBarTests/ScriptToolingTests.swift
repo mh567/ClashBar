@@ -188,3 +188,19 @@ extension ScriptToolingTests {
         XCTAssertEqual(result.status, 0, result.stderr)
     }
 }
+
+extension ScriptToolingTests {
+    /// The cask lives in a tap only the upstream owner can push to. If this guard
+    /// is dropped, every fork release fails at the final job.
+    ///
+    /// Fork-only: this assertion cannot live on `main`, where the workflow still
+    /// legitimately targets upstream's tap.
+    func testReleaseWorkflowGuardsHomebrewTapForUpstreamOnly() throws {
+        let workflow = self.repoRoot.appendingPathComponent(".github/workflows/release-dmg.yml")
+        let contents = try String(contentsOf: workflow, encoding: .utf8)
+
+        XCTAssertTrue(
+            contents.contains("if: github.repository == 'Sitoi/ClashBar'"),
+            "update-formula must be gated so forks do not attempt to push to upstream's tap")
+    }
+}

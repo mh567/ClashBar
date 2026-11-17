@@ -84,6 +84,9 @@ docs/               文档站
 
 ## 提交与发布
 
+- 本仓库是 `Sitoi/ClashBar` 的 fork，分支模型、上游同步与分家流程见 [docs/MAINTENANCE.md](docs/MAINTENANCE.md)。
+- `main` 只放可回流上游的改动（bug 修复、测试、工程改进），靠 `Scripts/sync_upstream.sh` rebase 到上游之上。
+- 与上游必然冲突的改动（仓库标识、发布流程）放 `fork/*` 分支，不要合进 `main`。
 - 提交信息沿用仓库风格：`<emoji> <type>: <中文摘要>`，例如 `✨ feat: 更新 v0.3.6，修复系统代理 Helper 安装问题`。
 - 只有在用户明确要求时才提交 git；不要主动 commit、push 或打 tag。
 - 版本发布由 GitHub Actions 驱动：`.github/workflows/release-dmg.yml`（tag 触发，构建 arm64 / x86_64 各含 Core 与不含 Core 的 DMG，并更新 Homebrew cask）与 `release-dmg-beta.yml`（从 `alpha` 分支手动触发，发布 prerelease）。
