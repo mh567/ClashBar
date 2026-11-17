@@ -53,23 +53,37 @@ git push origin main
 
 ## 发版
 
-`release-dmg.yml` 由 tag 触发：
+从 `v1.0.0` 起使用独立版本序列，与上游的 `0.3.x` 分开，避免 tag 重名。
+必须是纯 `x.y.z`（可带 `v` 前缀）：带其他前缀（如 `fork-v1.0.0`）会让
+`AppSemanticVersion` 解析失败，应用内的更新检查会失效。
+
+### 本地发布（推荐）
+
+CI 需要为每个产物占用一台 macOS runner，免费账户配额有限，容易排队超时。
+本地发布走同一套脚本，由本机直接产出并上传：
 
 ```sh
-git tag v0.4.0
-git push origin v0.4.0
+git checkout fork/personal        # 发布分支，含仓库标识改动
+git tag -a v1.1.0 -m "ClashBar v1.1.0"
+git push origin v1.1.0
+Scripts/release_local.sh v1.1.0    # 构建 → 校验 → 创建或追加 Release
 ```
 
-注意 tag 空间与上游共享。上游已经用到 `v0.3.6`，本地 tag 一旦与上游重名，
-`git push` 会被拒绝，或者拉取上游 tag 时产生歧义。发版前先确认：
+- 工作区必须干净，且 tag 已存在，保证产物与 tag 对应。
+- `--draft` 只构建不发布；`--no-core` 产出无内核版；`--arch` 仅用于交叉编译。
+- 发布前先在 `CHANGELOG.md` 顶部补对应版本小节，否则发布说明生成会失败。
 
-```sh
-git fetch upstream --tags
-git tag -l 'v0.4.*'
-```
+### CI 发布
 
-如果 fork 与上游会长期并存并发版，建议改用独立前缀（如 `fork-v0.4.0`）并在
-`prepare-version` 里相应调整解析规则。
+`release-dmg.yml` 由 tag 触发。构建矩阵当前只保留 arm64 含 Core 单产物以
+节省配额；恢复其他变体时要同步修改 `Scripts/generate_release_notes.sh` 的
+`RELEASE_VARIANTS`，否则下载表格会链接到未构建的文件。
+
+### 分发说明
+
+产物为 ad-hoc 签名，未做 notarization。用户首次打开需要在「系统设置 →
+隐私与安全性」中放行。bundle id 与上游一致（`com.clashbar`），因此不能与
+上游版本同时安装，两者会共用数据目录与特权 Helper。
 
 ## 分家（不再跟随上游）
 
