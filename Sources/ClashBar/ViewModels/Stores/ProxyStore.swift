@@ -25,6 +25,10 @@ final class ProxyStore: ObservableObject {
         willSet { self.publishChangeIfNeeded(current: self.proxyNodeTypes, next: newValue) }
     }
 
+    var proxyTestURLs: [String: String] = [:] {
+        willSet { self.publishChangeIfNeeded(current: self.proxyTestURLs, next: newValue) }
+    }
+
     var isProxySyncing = false {
         willSet { self.publishChangeIfNeeded(current: self.isProxySyncing, next: newValue) }
     }

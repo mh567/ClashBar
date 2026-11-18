@@ -136,6 +136,30 @@ struct SystemTabView: TranslatingView {
         }
     }
 
+    func settingsURLFieldRow(
+        _ title: String,
+        symbol: String,
+        placeholder: String,
+        text: Binding<String>) -> some View
+    {
+        HStack(spacing: T.space8) {
+            self.settingsRowLabel(symbol: symbol, title: title)
+                .layoutPriority(1)
+
+            Spacer(minLength: 0)
+
+            TextField(placeholder, text: text)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .font(.app(size: T.FontSize.caption, weight: .regular))
+                .foregroundStyle(nativePrimaryLabel)
+                .multilineTextAlignment(.trailing)
+                .frame(width: self.settingsMenuControlWidth, alignment: .trailing)
+                .help(placeholder)
+        }
+        .menuRowPadding(vertical: T.space4)
+    }
+
     func systemProxyExceptionBinding(id: EditableSystemProxyException.ID) -> Binding<String> {
         Binding(
             get: {
@@ -410,6 +434,11 @@ struct SystemTabView: TranslatingView {
                     onSelect: { level in
                         Task { await self.appViewModel.applyEditableCoreSetting(.logLevel, to: level.rawValue) }
                     }))
+                self.settingsURLFieldRow(
+                    self.tr("ui.settings.direct_healthcheck_url"),
+                    symbol: "arrow.triangle.branch",
+                    placeholder: AppViewModel.defaultDirectHealthcheckURL,
+                    text: self.$appViewModel.directHealthcheckURL)
                 Button {
                     self.isExceptionsExpanded.toggle()
                 } label: {

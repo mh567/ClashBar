@@ -138,15 +138,63 @@ extension AppViewModel {
 
     private func measureGroupLatency(_ group: ProxyGroup) async {
         guard !self.groupLatencyLoading.contains(group.name) else { return }
-        groupLatencyLoading.insert(group.name)
-        defer { groupLatencyLoading.remove(group.name) }
+        self.groupLatencyLoading.insert(group.name)
+        defer { self.groupLatencyLoading.remove(group.name) }
 
-        let testURL = self.healthcheckURL(for: group)
-        let timeout = group.timeout.flatMap { $0 > 0 ? $0 : nil } ?? defaultHealthcheckTimeoutMilliseconds
-        await runRefresh {
-            try await self.clientOrThrow().requestNoResponse(
-                .groupDelay(name: group.name, url: testURL, timeout: timeout))
+        let timeout = self.healthcheckTimeout(for: group)
+        let plans = self.uniqueNodeNames(group.all).compactMap { node -> (node: String, url: String)? in
+            guard let url = self.healthcheckURL(forNode: node, in: group) else { return nil }
+            return (node, url)
         }
+        guard !plans.isEmpty else { return }
+        let testURLs = Set(plans.map { $0.url })
+
+        await runRefresh {
+            let client = try self.clientOrThrow()
+            if testURLs.count == 1, let testURL = testURLs.first {
+                try await client.requestNoResponse(
+                    .groupDelay(name: group.name, url: testURL, timeout: timeout))
+                return
+            }
+            await self.runMemberHealthchecks(plans, group: group.name, timeout: timeout)
+        }
+    }
+
+    private func runMemberHealthchecks(
+        _ plans: [(node: String, url: String)],
+        group: String,
+        timeout: Int) async
+    {
+        await withTaskGroup(of: Void.self) { taskGroup in
+            for plan in plans {
+                taskGroup.addTask {
+                    await self.runMemberHealthcheck(
+                        node: plan.node,
+                        url: plan.url,
+                        group: group,
+                        timeout: timeout)
+                }
+            }
+        }
+    }
+
+    private func runMemberHealthcheck(node: String, url: String, group: String, timeout: Int) async {
+        let key = ProxyLatencyTestKey(group: group, node: node)
+        guard !self.proxyLatencyTesting.contains(key) else { return }
+        self.proxyLatencyTesting.insert(key)
+        defer { self.proxyLatencyTesting.remove(key) }
+
+        try? await self.clientOrThrow().requestNoResponse(
+            .proxyDelay(name: node, url: url, timeout: timeout))
+    }
+
+    private func uniqueNodeNames(_ names: [String]) -> [String] {
+        var seen: Set<String> = []
+        return names.filter { !$0.isEmpty && seen.insert($0).inserted }
+    }
+
+    private func healthcheckTimeout(for group: ProxyGroup?) -> Int {
+        group?.timeout ?? self.defaultHealthcheckTimeoutMilliseconds
     }
 
     func refreshAllGroupLatencies(includeHiddenGroups: Bool = false) async {
@@ -174,12 +222,12 @@ extension AppViewModel {
         let key = ProxyLatencyTestKey(group: group, node: node)
         guard !self.proxyLatencyTesting.contains(key) else { return }
 
+        let proxyGroup = self.proxyGroup(named: group)
+        guard let testURL = self.healthcheckURL(forNode: node, in: proxyGroup) else { return }
+        let timeout = self.healthcheckTimeout(for: proxyGroup)
+
         self.proxyLatencyTesting.insert(key)
         defer { self.proxyLatencyTesting.remove(key) }
-
-        let proxyGroup = self.proxyGroups.first { $0.name == group }
-        let testURL = self.healthcheckURL(for: proxyGroup)
-        let timeout = proxyGroup?.timeout.flatMap { $0 > 0 ? $0 : nil } ?? defaultHealthcheckTimeoutMilliseconds
 
         await runRefresh {
             try await self.clientOrThrow().requestNoResponse(
@@ -188,11 +236,21 @@ extension AppViewModel {
         await self.refreshProxyGroups()
     }
 
-    private func healthcheckURL(for group: ProxyGroup?) -> String {
-        group?.testUrl ?? self.defaultHealthcheckURL
+    private func healthcheckURL(forNode node: String, in group: ProxyGroup?) -> String? {
+        ProxyHealthcheck.targetURL(
+            nodeType: self.proxyNodeTypes[node],
+            nodeURL: self.proxyTestURLs[node],
+            groupURL: group?.testUrl,
+            defaultURL: self.defaultHealthcheckURL,
+            directURL: ProxyHealthcheck.resolvedDirectURL(
+                configured: self.directHealthcheckURL,
+                fallback: Self.defaultDirectHealthcheckURL))
     }
 
     func delayText(group: String, node: String, fallbackToGroupHistory: Bool = false) -> String {
+        guard ProxyHealthcheck.isTestable(nodeType: self.proxyNodeTypes[node]) else {
+            return tr("ui.common.unavailable")
+        }
         guard let value = delayValue(
             group: group,
             node: node,
@@ -223,7 +281,12 @@ extension AppViewModel {
         ProxyGroupLatencyLookup(
             groups: self.proxyGroups,
             samples: self.proxyDelaySamples,
-            defaultURL: self.defaultHealthcheckURL)
+            testURLs: self.proxyTestURLs,
+            nodeTypes: self.proxyNodeTypes,
+            defaultURL: self.defaultHealthcheckURL,
+            directURL: ProxyHealthcheck.resolvedDirectURL(
+                configured: self.directHealthcheckURL,
+                fallback: Self.defaultDirectHealthcheckURL))
     }
 
     func controllerHost() -> String {

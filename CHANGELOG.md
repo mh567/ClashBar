@@ -1,3 +1,29 @@
+## v1.2.0
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.2.0-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 分组延迟测试改为按配置解析测速地址：子分组与 provider 节点优先使用各自的 `url` 与 health-check 地址，未配置时回退父组和默认地址，`DIRECT` 使用独立的直连探测地址，修复分组默认选中 DIRECT 却显示超时的问题。设置中新增「直连测试地址」。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **按节点解析测速地址**：测速地址不再由父分组统一决定，节点自身的 `url`、provider 的 `health-check.url`、父分组地址与默认地址按优先级逐级回退；同一分组里的国内、国外子分组可以各用各的地址。
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **直连测试地址**：设置中新增输入项，为 `DIRECT` 指定可直连的探测地址，默认使用 `http://connect.rom.miui.com/generate_204`，留空时回退到该默认值。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **分组测速并发**：成员地址一致时仍走一次 `/group` 请求；地址不一致时按成员并发测试，避免串行批次放大耗时。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **延迟结果回填**：嵌套分组、provider 节点与 `DIRECT` 都按实际测速地址读取历史，切换地址后不再复用其他地址的结果。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **DIRECT 显示超时**：分组默认选中 `DIRECT` 时，不再用父组的 gstatic 地址测试直连出口，改为直连探测地址，避免误报超时。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **不可测节点显示**：`REJECT`、`PASS`、`COMPATIBLE` 等节点显示「不可用」，不再显示为未知或发起注定失败的测速。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **旧测速记录孤立**：测速地址变更后，节点已有且非超时的历史结果仍会展示，等待下次测速覆盖；`DIRECT` 的旧地址超时记录不会重新出现。
+
+---
+
 ## v1.1.3
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.3-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

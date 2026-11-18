@@ -177,6 +177,7 @@
 "ui.settings.ipv6" = "IPv6";
 "ui.settings.tcp_concurrent" = "TCP Concurrent";
 "ui.settings.log_level" = "Log Level";
+"ui.settings.direct_healthcheck_url" = "Direct Test URL";
 "ui.settings.port.port" = "HTTP Port";
 "ui.settings.port.socks" = "SOCKS Port";
 "ui.settings.port.mixed" = "Mixed Port";
@@ -246,6 +247,7 @@
 "ui.common.na" = "-";
 "ui.common.unknown" = "--";
 "ui.common.timeout" = "Timeout";
+"ui.common.unavailable" = "Unavailable";
 "ui.common.latency_ms" = "%dms";
 "ui.system_proxy.helper_install" = "Install";
 "ui.system_proxy.helper_install.ready" = "Installed";

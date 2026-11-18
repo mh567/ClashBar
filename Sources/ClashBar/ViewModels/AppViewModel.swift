@@ -96,6 +96,11 @@ final class AppViewModel: ObservableObject {
         set { self.proxyStore.proxyNodeTypes = newValue }
     }
 
+    var proxyTestURLs: [String: String] {
+        get { self.proxyStore.proxyTestURLs }
+        set { self.proxyStore.proxyTestURLs = newValue }
+    }
+
     var providerProxyCount: Int {
         get { self.proxyStore.providerProxyCount }
         set { self.proxyStore.providerProxyCount = newValue }
@@ -409,6 +414,8 @@ final class AppViewModel: ObservableObject {
     @AppStorage("clashbar.statusbar.display.mode") private var statusBarDisplayModeRaw: String = StatusBarDisplayMode
         .iconOnly.rawValue
     @AppStorage("clashbar.proxy.node.hide_unavailable") var hideUnavailableProxyNodes: Bool = false
+    @AppStorage("clashbar.proxy.healthcheck.direct_url") var directHealthcheckURL: String = AppViewModel
+        .defaultDirectHealthcheckURL
     let selectedConfigKey = "clashbar.config.selected.filename"
     let legacySelectedConfigKey = "clashbar.config.selected"
     let remoteConfigSourcesKey = "clashbar.config.remote.sources.v1"
@@ -437,6 +444,7 @@ final class AppViewModel: ObservableObject {
 
     let defaultHealthcheckURL = "https://www.gstatic.com/generate_204"
     let defaultHealthcheckTimeoutMilliseconds = 5000
+    static let defaultDirectHealthcheckURL = "http://connect.rom.miui.com/generate_204"
     var mediumFrequencyIntervalNanoseconds: UInt64 = 4_000_000_000
     var lowFrequencyIntervalNanoseconds: UInt64 = 20_000_000_000
     var currentConnectionsStreamIntervalMilliseconds: Int?

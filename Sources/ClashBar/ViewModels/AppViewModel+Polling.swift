@@ -285,6 +285,7 @@ extension AppViewModel {
         proxyGroups = []
         proxyDelaySamples = [:]
         proxyNodeTypes = [:]
+        proxyTestURLs = [:]
         groupLatencyLoading = []
         proxyLatencyTesting = []
         providerProxyCount = 0
@@ -470,6 +471,9 @@ extension AppViewModel {
         self.proxyGroups = groups
         self.proxyDelaySamples = delaySamples
         self.proxyNodeTypes = nodeTypes
+        self.proxyTestURLs = ProxyHealthcheck.testURLs(
+            proxies: proxiesWithHealthcheckConfig,
+            providers: Array(providerLookup.values))
     }
 
     func refreshConnections() async {

@@ -181,6 +181,7 @@
 "ui.settings.ipv6" = "IPv6";
 "ui.settings.tcp_concurrent" = "TCP 并发";
 "ui.settings.log_level" = "日志级别";
+"ui.settings.direct_healthcheck_url" = "直连测试地址";
 "ui.settings.port.port" = "HTTP 端口";
 "ui.settings.port.socks" = "SOCKS 端口";
 "ui.settings.port.mixed" = "混合端口";
@@ -250,6 +251,7 @@
 "ui.common.na" = "-";
 "ui.common.unknown" = "--";
 "ui.common.timeout" = "超时";
+"ui.common.unavailable" = "不可用";
 "ui.common.latency_ms" = "%dms";
 "ui.system_proxy.helper_install" = "安装";
 "ui.system_proxy.helper_install.ready" = "已安装";
