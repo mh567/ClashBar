@@ -69,7 +69,7 @@ struct SystemTabView: TranslatingView {
     {
         let resolvedControlWidth = controlWidth ?? self.settingsMenuControlWidth
 
-        return AttachedPopoverMenu(width: popoverWidth ?? resolvedControlWidth, opensOnHover: false) { _ in
+        return AttachedPopoverMenu(width: popoverWidth ?? resolvedControlWidth) { _ in
             HStack(spacing: T.space8) {
                 self.settingsRowLabel(symbol: symbol, title: title)
                     .layoutPriority(1)

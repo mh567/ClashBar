@@ -171,6 +171,15 @@ struct RemoteConfigMenuState: Equatable {
         nextUpdateAt: nil)
 }
 
+struct RemoteConfigUpdateSummary: Equatable {
+    let updatedCount: Int
+    let failedCount: Int
+
+    var hasFailures: Bool {
+        self.failedCount > 0
+    }
+}
+
 struct ProviderRefreshStatus: Equatable {
     let phase: ProviderRefreshPhase
     let trigger: ProviderRefreshTrigger?

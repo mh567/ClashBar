@@ -64,14 +64,14 @@ extension AppViewModel {
         }
     }
 
-    func updateAllRemoteConfigFiles() async {
-        guard let configDirectory = ensureConfigDirectoryAvailable() else { return }
+    func updateAllRemoteConfigFiles() async -> RemoteConfigUpdateSummary? {
+        guard let configDirectory = ensureConfigDirectoryAvailable() else { return nil }
         pruneRemoteConfigSubscriptionsIfNeeded()
 
         let subscriptions = remoteConfigSubscriptions
         guard !subscriptions.isEmpty else {
             appendLog(level: "info", message: tr("log.config.remote.no_sources"))
-            return
+            return nil
         }
 
         let userAgent = await remoteSubscriptionUserAgent()
@@ -133,6 +133,8 @@ extension AppViewModel {
         if self.shouldAutoReloadCurrentConfig(updatedFileNames: updatedFileNames) {
             await self.reloadConfig()
         }
+
+        return RemoteConfigUpdateSummary(updatedCount: updatedFileNames.count, failedCount: failedCount)
     }
 
     func deleteConfigFile(named fileName: String) async {
@@ -214,10 +216,13 @@ extension AppViewModel {
         }
     }
 
-    func reloadConfigFileList() {
-        guard self.ensureConfigDirectoryAvailable() != nil else { return }
+    @discardableResult
+    func reloadConfigFileList() -> Int? {
+        guard self.ensureConfigDirectoryAvailable() != nil else { return nil }
         self.refreshConfigStateAfterMutation()
-        appendLog(level: "info", message: tr("log.config.loaded_count", configService.availableConfigs.count))
+        let count = configService.availableConfigs.count
+        appendLog(level: "info", message: tr("log.config.loaded_count", count))
+        return count
     }
 
     func refreshRemoteConfigMenuStates() {

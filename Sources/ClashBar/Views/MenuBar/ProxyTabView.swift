@@ -9,6 +9,22 @@ struct ProxyTabView: TranslatingView {
         case currentEndpoint
     }
 
+    private struct ConfigMenuActionFeedback: Equatable {
+        enum Phase: Equatable {
+            case running
+            case succeeded
+            case failed
+        }
+
+        let phase: Phase
+        let message: String
+    }
+
+    enum ConfigMenuAction: Hashable {
+        case reloadConfigList
+        case updateRemoteConfigs
+    }
+
     private struct ConfigMenuItemContext: Identifiable {
         let name: String
         let isRemote: Bool
@@ -51,6 +67,9 @@ struct ProxyTabView: TranslatingView {
     @State var copiedProxyCommandTarget: ProxyCommandCopyTarget?
     @State var proxyCommandCopyResetTask: Task<Void, Never>?
     @State var hoveredProviderName: String?
+    @State private var configMenuFeedback: [ConfigMenuAction: ConfigMenuActionFeedback] = [:]
+    @State private var configMenuActionTasks: [ConfigMenuAction: Task<Void, Never>] = [:]
+    @State private var configMenuFeedbackClearTask: Task<Void, Never>?
 
     var body: some View {
         self.proxyTabBody
@@ -58,6 +77,82 @@ struct ProxyTabView: TranslatingView {
                 self.proxyCommandCopyResetTask?.cancel()
                 self.proxyCommandCopyResetTask = nil
             }
+    }
+
+    // MARK: - Config Menu Actions
+
+    func runConfigMenuAction(_ action: ConfigMenuAction) {
+        guard self.configMenuActionTasks[action] == nil else { return }
+
+        self.configMenuFeedback[action] = ConfigMenuActionFeedback(
+            phase: .running,
+            message: self.configMenuActionRunningText(action))
+
+        let task = Task { @MainActor in
+            let feedback = await self.performConfigMenuAction(action)
+            self.configMenuActionTasks[action] = nil
+            guard !Task.isCancelled else { return }
+            self.publishConfigMenuFeedback(action, feedback)
+        }
+        self.configMenuActionTasks[action] = task
+    }
+
+    private func performConfigMenuAction(_ action: ConfigMenuAction) async -> ConfigMenuActionFeedback {
+        switch action {
+        case .reloadConfigList:
+            guard let count = self.appViewModel.reloadConfigFileList() else {
+                return ConfigMenuActionFeedback(
+                    phase: .failed,
+                    message: self.tr("ui.quick.config_action.reload_failed"))
+            }
+            return ConfigMenuActionFeedback(
+                phase: .succeeded,
+                message: self.tr("ui.quick.config_action.reload_succeeded", count))
+
+        case .updateRemoteConfigs:
+            guard let summary = await self.appViewModel.updateAllRemoteConfigFiles() else {
+                return ConfigMenuActionFeedback(
+                    phase: .failed,
+                    message: self.tr("ui.quick.config_action.update_no_sources"))
+            }
+            return ConfigMenuActionFeedback(
+                phase: summary.hasFailures ? .failed : .succeeded,
+                message: self.tr(
+                    "ui.quick.config_action.update_finished",
+                    summary.updatedCount,
+                    summary.failedCount))
+        }
+    }
+
+    private func configMenuActionRunningText(_ action: ConfigMenuAction) -> String {
+        switch action {
+        case .reloadConfigList: self.tr("ui.quick.config_action.reloading")
+        case .updateRemoteConfigs: self.tr("ui.quick.config_action.updating")
+        }
+    }
+
+    func resetConfigMenuFeedback() {
+        self.configMenuFeedback = self.configMenuFeedback.filter { $0.value.phase == .running }
+    }
+
+    private func publishConfigMenuFeedback(_ action: ConfigMenuAction, _ feedback: ConfigMenuActionFeedback) {
+        withAnimation(.easeOut(duration: 0.16)) {
+            self.configMenuFeedback[action] = feedback
+        }
+
+        self.configMenuFeedbackClearTask?.cancel()
+        self.configMenuFeedbackClearTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 2_600_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.16)) {
+                self.configMenuFeedback = self.configMenuFeedback.filter { $0.value.phase == .running }
+            }
+            self.configMenuFeedbackClearTask = nil
+        }
     }
 
     func handleCopyProxyCommand(_ target: ProxyCommandCopyTarget, action: () -> Void) {
@@ -199,6 +294,49 @@ struct ProxyTabView: TranslatingView {
             .textCase(.uppercase)
     }
 
+    private func configMenuActionRow(
+        _ action: ConfigMenuAction,
+        title: String,
+        symbol: String,
+        tint: Color) -> some View
+    {
+        let feedback = self.configMenuFeedback[action]
+        let isRunning = feedback?.phase == .running
+
+        return AttachedPopoverMenuItem(
+            title: title,
+            subtitle: feedback?.message,
+            leadingSymbol: self.configMenuActionSymbol(feedback: feedback, fallback: symbol),
+            leadingTint: self.configMenuActionTint(feedback: feedback, fallback: tint),
+            isLoading: isRunning)
+        {
+            self.runConfigMenuAction(action)
+        }
+        .disabled(isRunning)
+    }
+
+    private func configMenuActionSymbol(feedback: ConfigMenuActionFeedback?, fallback: String) -> String {
+        switch feedback?.phase {
+        case .succeeded:
+            "checkmark.circle.fill"
+        case .failed:
+            "exclamationmark.triangle.fill"
+        case .running, .none:
+            fallback
+        }
+    }
+
+    private func configMenuActionTint(feedback: ConfigMenuActionFeedback?, fallback: Color) -> Color {
+        switch feedback?.phase {
+        case .succeeded:
+            self.nativePositive.opacity(T.Opacity.solid)
+        case .failed:
+            self.nativeCritical.opacity(T.Opacity.solid)
+        case .running, .none:
+            fallback
+        }
+    }
+
     private func configMenuItem(for context: ConfigMenuItemContext, dismiss: @escaping () -> Void) -> some View {
         ConfigMenuItemView(
             title: context.name,
@@ -295,14 +433,11 @@ struct ProxyTabView: TranslatingView {
             dismiss()
             Task { await self.appViewModel.showRuntimeConfigPreview() }
         }
-        AttachedPopoverMenuItem(
+        self.configMenuActionRow(
+            .reloadConfigList,
             title: self.tr("ui.quick.reload_config_list"),
-            leadingSymbol: "arrow.clockwise",
-            leadingTint: self.nativeInfo.opacity(T.Opacity.solid))
-        {
-            dismiss()
-            self.appViewModel.reloadConfigFileList()
-        }
+            symbol: "arrow.clockwise",
+            tint: self.nativeInfo.opacity(T.Opacity.solid))
         AttachedPopoverMenuItem(
             title: self.tr("ui.quick.import_local_config"),
             leadingSymbol: "square.and.arrow.down",
@@ -319,14 +454,11 @@ struct ProxyTabView: TranslatingView {
             dismiss()
             Task { await self.appViewModel.importRemoteConfigFile() }
         }
-        AttachedPopoverMenuItem(
+        self.configMenuActionRow(
+            .updateRemoteConfigs,
             title: self.tr("ui.quick.update_remote_configs"),
-            leadingSymbol: "arrow.triangle.2.circlepath",
-            leadingTint: self.nativeWarning.opacity(T.Opacity.solid))
-        {
-            dismiss()
-            Task { await self.appViewModel.updateAllRemoteConfigFiles() }
-        }
+            symbol: "arrow.triangle.2.circlepath",
+            tint: self.nativeWarning.opacity(T.Opacity.solid))
         AttachedPopoverMenuItem(
             title: self.tr("ui.quick.show_in_finder"),
             leadingSymbol: "folder",
@@ -466,6 +598,7 @@ struct ProxyTabView: TranslatingView {
                 AttachedPopoverMenu(
                     onWillPresent: {
                         self.appViewModel.refreshRemoteConfigMenuStates()
+                        self.resetConfigMenuFeedback()
                     },
                     label: { _ in
                         self.quickRowContent(

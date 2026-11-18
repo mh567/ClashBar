@@ -92,6 +92,12 @@
 "ui.quick.import_local_config" = "Import Local Config";
 "ui.quick.import_remote_config" = "Import Subscription Link";
 "ui.quick.update_remote_configs" = "Update Subscription Links";
+"ui.quick.config_action.reloading" = "Reloading config files…";
+"ui.quick.config_action.reload_succeeded" = "Reloaded %d config files";
+"ui.quick.config_action.reload_failed" = "Failed to reload config files";
+"ui.quick.config_action.updating" = "Updating subscriptions…";
+"ui.quick.config_action.update_finished" = "Subscriptions updated: %d succeeded, %d failed";
+"ui.quick.config_action.update_no_sources" = "No subscription sources to update";
 "ui.quick.show_in_finder" = "Show in Finder";
 "ui.quick.configs.local_section" = "Local Configs";
 "ui.quick.configs.remote_section" = "Remote Configs";

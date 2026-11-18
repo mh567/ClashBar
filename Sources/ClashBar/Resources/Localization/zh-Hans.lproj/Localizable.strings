@@ -96,6 +96,12 @@
 "ui.quick.import_local_config" = "导入本地配置";
 "ui.quick.import_remote_config" = "导入订阅链接";
 "ui.quick.update_remote_configs" = "更新订阅链接";
+"ui.quick.config_action.reloading" = "正在重载配置文件…";
+"ui.quick.config_action.reload_succeeded" = "已重载 %d 个配置文件";
+"ui.quick.config_action.reload_failed" = "重载配置文件失败";
+"ui.quick.config_action.updating" = "正在更新订阅…";
+"ui.quick.config_action.update_finished" = "订阅更新完成：成功 %d，失败 %d";
+"ui.quick.config_action.update_no_sources" = "没有可更新的订阅来源";
 "ui.quick.show_in_finder" = "在访达中显示";
 "ui.quick.configs.local_section" = "本地配置";
 "ui.quick.configs.remote_section" = "远程配置";
