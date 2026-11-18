@@ -35,6 +35,67 @@ extension AppViewModel {
 
 @MainActor
 extension AppViewModel {
+    func showRuntimeConfigPreview() async {
+        guard !self.isRemoteTarget else { return }
+
+        let scrollView = NSTextView.scrollableTextView()
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        scrollView.hasHorizontalScroller = false
+        textView.isEditable = false
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainerInset = NSSize(width: 12, height: 12)
+        textView.font = .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        textView.string = self.tr("ui.quick.runtime_config.loading")
+
+        let panel = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 480),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false)
+        panel.title = self.tr("ui.quick.runtime_config.title")
+        panel.isReleasedWhenClosed = false
+        panel.hidesOnDeactivate = false
+        panel.collectionBehavior.insert(.moveToActiveSpace)
+        panel.contentView = scrollView
+        panel.initialFirstResponder = textView
+        self.runtimeConfigPreviewPanel?.close()
+        self.runtimeConfigPreviewPanel = panel
+        self.prepareModalWindowPresentation()
+        panel.center()
+        panel.makeKeyAndOrderFront(nil)
+
+        guard self.processManager.isRunning else {
+            textView.string = self.tr("ui.quick.runtime_config.stopped")
+            return
+        }
+        guard !self.isCoreActionProcessing, self.runtimeConfigReloadCount == 0,
+              let input = self.runtimeConfigInput, input.yaml != nil, input.status == self.processManager.status
+        else {
+            textView.string = self.tr("ui.quick.runtime_config.unavailable")
+            return
+        }
+        let preview: String
+        do {
+            let liveSettings = try await self.clientOrThrow().runtimeConfigPreview()
+            preview = try await input.preview(liveSettings: liveSettings)
+        } catch {
+            textView.string = self.tr("ui.quick.runtime_config.failed")
+            return
+        }
+        guard !self.isRemoteTarget, !self.isCoreActionProcessing, self.runtimeConfigReloadCount == 0,
+              input == self.runtimeConfigInput, input.status == self.processManager.status
+        else {
+            textView.string = self.tr("ui.quick.runtime_config.unavailable")
+            return
+        }
+        textView.string = preview
+    }
+}
+
+@MainActor
+extension AppViewModel {
     func presentCoreFailureAlert(
         title: String,
         message: String,

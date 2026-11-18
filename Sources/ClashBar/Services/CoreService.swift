@@ -168,7 +168,10 @@ private final class ProcessOutputBox: @unchecked Sendable {
 }
 
 final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
-    private(set) var status: CoreLifecycleStatus = .stopped
+    private var storedStatus: CoreLifecycleStatus = .stopped
+    var status: CoreLifecycleStatus {
+        self.lock.withLock { self.storedStatus }
+    }
     private var process: Process?
     private var stdoutHandle: FileHandle?
     private var stderrHandle: FileHandle?
@@ -297,7 +300,7 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
 
         self.lock.withLock {
             self.intentionalStop = false
-            self.status = .starting
+            self.storedStatus = .starting
         }
 
         let binary = try resolveMihomoBinary()
@@ -330,7 +333,7 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
             try proc.run()
             self.lock.withLock {
                 self.process = proc
-                self.status = .running(pid: proc.processIdentifier)
+                self.storedStatus = .running(pid: proc.processIdentifier)
             }
             let startMessage =
                 "[mihomo started] pid=\(proc.processIdentifier) " +
@@ -342,7 +345,7 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
         } catch {
             let reason = "Failed to launch mihomo: \(error.localizedDescription)"
             self.lock.withLock {
-                self.status = .failed(reason: reason)
+                self.storedStatus = .failed(reason: reason)
                 self.intentionalStop = false
                 self.releasePipeHandlesLocked()
             }
@@ -366,7 +369,7 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
 
         guard let running else {
             self.lock.withLock {
-                self.status = .stopped
+                self.storedStatus = .stopped
                 self.intentionalStop = false
                 self.releasePipeHandlesLocked()
             }
@@ -400,7 +403,7 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
 
         guard let running, running.isRunning else {
             self.lock.withLock {
-                self.status = .stopped
+                self.storedStatus = .stopped
                 self.intentionalStop = false
                 self.releasePipeHandlesLocked()
             }
@@ -453,7 +456,7 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
             let intentional = self.intentionalStop
             self.intentionalStop = false
             self.process = nil
-            self.status = .stopped
+            self.storedStatus = .stopped
             self.releasePipeHandlesLocked()
             return (true, intentional)
         }

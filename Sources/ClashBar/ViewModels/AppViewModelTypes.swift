@@ -1,5 +1,20 @@
 import Foundation
 
+struct RuntimeConfigInput: Equatable {
+    let yaml: String?
+    let status: CoreLifecycleStatus
+    let controller: String
+
+    static func readYAML(at path: String) -> String? {
+        try? String(contentsOfFile: path, encoding: .utf8)
+    }
+
+    func preview(liveSettings: String) async throws -> String {
+        guard let yaml = self.yaml else { throw CocoaError(.fileReadUnknown) }
+        return try await RuntimeConfigYAML.merge(yaml: yaml, settings: liveSettings, controller: self.controller)
+    }
+}
+
 struct SettingsPortField: Equatable {
     let key: String
     let value: String

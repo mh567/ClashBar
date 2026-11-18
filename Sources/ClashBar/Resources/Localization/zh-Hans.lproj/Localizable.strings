@@ -76,7 +76,13 @@
 "ui.section.core_settings" = "内核设置";
 "ui.section.core_settings_remote" = "内核设置 (远程)";
 
-"ui.quick.switch_config" = "切换配置";
+"ui.quick.manage_configs" = "配置管理";
+"ui.quick.runtime_config.view" = "查看运行时配置";
+"ui.quick.runtime_config.title" = "运行时配置";
+"ui.quick.runtime_config.loading" = "正在读取运行时配置…";
+"ui.quick.runtime_config.stopped" = "启动 Mihomo 后即可查看运行时配置。";
+"ui.quick.runtime_config.failed" = "无法生成运行时配置预览。";
+"ui.quick.runtime_config.unavailable" = "暂时无法确认内核加载的配置。请在内核启动或重载完成后重新打开预览。";
 "ui.quick.system_proxy" = "系统代理";
 "ui.quick.tun_mode" = "TUN 模式";
 "ui.quick.tun_stack_switch_hint" = "双击切换 TUN 协议栈";

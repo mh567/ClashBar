@@ -53,10 +53,14 @@ extension AppViewModel {
 
             let launchController = applyExternalControllerFromSelectedConfigFile(configPath: configPath)
             statusText = "Starting"
-            _ = try await self.processManager.start(configPath: configPath, controller: launchController)
+            let launchYAML = RuntimeConfigInput.readYAML(at: configPath)
+            let launchStatus = try await self.processManager.start(configPath: configPath, controller: launchController)
 
             await self.completeCoreBootstrap(
                 configPath: configPath,
+                launchYAML: launchYAML,
+                launchStatus: launchStatus,
+                launchController: launchController,
                 settingsOverlay: settingsOverlay,
                 options: CoreBootstrapOptions(
                     overlaySyncingKey: "start-overlay",
@@ -104,6 +108,7 @@ extension AppViewModel {
         self.cancelDeferredEditableSettingsOverlaySync()
         cancelProviderRefresh(reason: "stop requested")
         await self.processManager.stop()
+        self.runtimeConfigInput = nil
         cancelPolling()
         statusText = "Stopped"
         apiStatus = .unknown
@@ -136,9 +141,14 @@ extension AppViewModel {
                 transitionKind: .restart,
                 disableRuntimeTunBeforeStop: false)
             let settingsOverlay = self.overlayApplyingPendingCoreFeatureRecovery(currentEditableSettingsSnapshot())
-            _ = try await self.processManager.restart(configPath: configPath, controller: launchController)
+            let launchYAML = RuntimeConfigInput.readYAML(at: configPath)
+            let launchStatus = try await self.processManager.restart(
+                configPath: configPath, controller: launchController)
             await self.completeCoreBootstrap(
                 configPath: configPath,
+                launchYAML: launchYAML,
+                launchStatus: launchStatus,
+                launchController: launchController,
                 settingsOverlay: settingsOverlay,
                 options: CoreBootstrapOptions(
                     overlaySyncingKey: "restart-overlay",
@@ -320,6 +330,9 @@ extension AppViewModel {
 
     private func completeCoreBootstrap(
         configPath: String,
+        launchYAML: String?,
+        launchStatus: CoreLifecycleStatus,
+        launchController: String,
         settingsOverlay: EditableSettingsSnapshot,
         options: CoreBootstrapOptions) async
     {
@@ -329,6 +342,12 @@ extension AppViewModel {
         ensureAPIClient()
         startPolling()
         await refreshFromAPI(includeSlowCalls: true)
+
+        self.runtimeConfigInput = nil
+        if self.processManager.isRunning, self.processManager.status == launchStatus {
+            let yaml = launchYAML == RuntimeConfigInput.readYAML(at: configPath) ? launchYAML : nil
+            self.runtimeConfigInput = RuntimeConfigInput(yaml: yaml, status: launchStatus, controller: launchController)
+        }
 
         await self.syncEditableSettingsOverlayForCoreBootstrap(
             settingsOverlay,

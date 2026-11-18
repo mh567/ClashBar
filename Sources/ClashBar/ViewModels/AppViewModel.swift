@@ -448,6 +448,9 @@ final class AppViewModel: ObservableObject {
     var didCheckSystemProxyConsistencyOnLaunch = false
     var lastCoreFailureAlertKey: String?
     var lastCoreFailureAlertAt: Date?
+    var runtimeConfigPreviewPanel: NSPanel?
+    var runtimeConfigInput: RuntimeConfigInput?
+    var runtimeConfigReloadCount = 0
     let coreFailureAlertThrottleInterval: TimeInterval = 20
     var networkReachabilityStatus: NetworkReachabilityStatus = .unknown
     var shouldResumeCoreAfterNetworkRecovery = false

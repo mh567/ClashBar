@@ -7,7 +7,7 @@
 ClashBar 是原生 macOS 菜单栏代理客户端（SwiftUI + AppKit），网络能力由 `mihomo` 内核提供，通过 mihomo 的 External Controller HTTP / WebSocket API 管理配置、节点、规则、连接与系统代理。
 
 - 语言与工具链：Swift 6.2（`// swift-tools-version: 6.2`）、SwiftPM、macOS 13+
-- 依赖：无第三方 Swift 包，全部基于系统框架（AppKit、SwiftUI、Network、ServiceManagement）
+- 依赖：系统框架（AppKit、SwiftUI、Network、ServiceManagement）和用于运行时配置预览的 Yams。LibYAML 随应用构建。
 - 体积目标：无 Core 的 `.app` 约 3 MB，避免引入重量级依赖
 
 ## 常用命令

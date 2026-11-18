@@ -325,7 +325,20 @@ extension AppViewModel {
                 appendLog(level: "error", message: tr("log.start.no_config"))
                 return
             }
+            let initialInput = self.runtimeConfigInput
+            let status = self.processManager.status
+            let yaml = RuntimeConfigInput.readYAML(at: configPath)
+            let overlapsAnotherReload = self.runtimeConfigReloadCount > 0
+            self.runtimeConfigReloadCount += 1
+            defer { self.runtimeConfigReloadCount -= 1 }
+
             try await self.clientOrThrow().requestNoResponse(.putConfigs(force: false, path: configPath, payload: nil))
+            if let initialInput, initialInput.status == status, self.processManager.status == status {
+                let stableInput = !overlapsAnotherReload && self.runtimeConfigReloadCount == 1
+                    && yaml == RuntimeConfigInput.readYAML(at: configPath)
+                self.runtimeConfigInput = RuntimeConfigInput(
+                    yaml: stableInput ? yaml : nil, status: status, controller: initialInput.controller)
+            }
             try await self.restoreTunAfterConfigReloadIfNeeded(expectedEnabled: expectedTunEnabled)
             appendLog(level: "info", message: tr("log.action.success", actionName))
         } catch {

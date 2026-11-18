@@ -289,6 +289,17 @@ final class MihomoAPIService: MihomoAPITransporting, @unchecked Sendable {
         _ = try await self.send(endpoint)
     }
 
+    func runtimeConfigPreview() async throws -> String {
+        let data = try await self.send(.getConfigs)
+        guard let config = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.invalidResponse
+        }
+        let formatted = try JSONSerialization.data(
+            withJSONObject: config,
+            options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        return String(decoding: formatted, as: UTF8.self)
+    }
+
     func makeWebSocketTask(for endpoint: Endpoint) throws -> URLSessionWebSocketTask {
         let request = try buildWebSocketRequest(for: endpoint)
         return self.webSocketSession.webSocketTask(with: request)

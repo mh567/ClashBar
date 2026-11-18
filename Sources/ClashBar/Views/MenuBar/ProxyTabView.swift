@@ -288,6 +288,14 @@ struct ProxyTabView: TranslatingView {
         }
         AttachedPopoverMenuDivider()
         AttachedPopoverMenuItem(
+            title: self.tr("ui.quick.runtime_config.view"),
+            leadingSymbol: "doc.text.magnifyingglass",
+            leadingTint: self.nativeSecondaryLabel)
+        {
+            dismiss()
+            Task { await self.appViewModel.showRuntimeConfigPreview() }
+        }
+        AttachedPopoverMenuItem(
             title: self.tr("ui.quick.reload_config_list"),
             leadingSymbol: "arrow.clockwise",
             leadingTint: self.nativeInfo.opacity(T.Opacity.solid))
@@ -445,7 +453,7 @@ struct ProxyTabView: TranslatingView {
         return VStack(spacing: 0) {
             if self.appViewModel.isRemoteTarget {
                 self.quickRowContent(
-                    title: self.tr("ui.quick.switch_config"),
+                    title: self.tr("ui.quick.manage_configs"),
                     symbol: "doc.text",
                     foreground: nativePurple)
                 {
@@ -461,7 +469,7 @@ struct ProxyTabView: TranslatingView {
                     },
                     label: { _ in
                         self.quickRowContent(
-                            title: self.tr("ui.quick.switch_config"),
+                            title: self.tr("ui.quick.manage_configs"),
                             symbol: "doc.text",
                             foreground: nativePurple)
                         {

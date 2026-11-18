@@ -12,6 +12,9 @@ extension AppViewModel {
             }
             managedProcess.onTermination = { [weak self] code in
                 Task { @MainActor in
+                    if self?.processManager.isRunning == false {
+                        self?.runtimeConfigInput = nil
+                    }
                     guard self?.isRemoteTarget != true else { return }
                     let message = self?.tr("log.process.terminated", code) ?? ""
                     self?.statusText = "Failed"

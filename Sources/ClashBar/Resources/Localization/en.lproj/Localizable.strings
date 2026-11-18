@@ -74,7 +74,13 @@
 "ui.section.core_settings" = "Core Settings";
 "ui.section.core_settings_remote" = "Core Settings (Remote)";
 
-"ui.quick.switch_config" = "Switch Config";
+"ui.quick.manage_configs" = "Manage Configs";
+"ui.quick.runtime_config.view" = "View Runtime Config";
+"ui.quick.runtime_config.title" = "Runtime Config";
+"ui.quick.runtime_config.loading" = "Loading runtime configuration…";
+"ui.quick.runtime_config.stopped" = "Start Mihomo to view its runtime configuration.";
+"ui.quick.runtime_config.failed" = "Could not generate the runtime configuration preview.";
+"ui.quick.runtime_config.unavailable" = "The loaded configuration could not be confirmed. Reopen the preview after the core finishes starting or reloading.";
 "ui.quick.system_proxy" = "System Proxy";
 "ui.quick.tun_mode" = "TUN Mode";
 "ui.quick.tun_stack_switch_hint" = "Double-click to switch TUN stack";
