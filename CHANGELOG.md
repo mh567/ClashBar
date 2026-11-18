@@ -1,3 +1,21 @@
+## v1.0.1
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.0.1-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 首页右下角新增客户端更新入口。本版提供 Apple Silicon 含 mihomo 内核安装包，采用 ad hoc 签名，macOS 可能要求在「系统设置 → 隐私与安全性」中放行。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **客户端应用内更新**：从本仓库检测新版，点击更新后下载并校验安装包，替换客户端并尝试自动重启。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **节点测速结果**：按测速地址隔离延迟结果，避免切换测速地址后沿用其他地址的结果。
+
+---
+
 ## v1.0.0
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.0.0-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
