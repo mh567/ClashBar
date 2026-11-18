@@ -1,3 +1,24 @@
+## v1.1.5
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.5-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 统一子菜单的展开方式：配置管理、代理分组、机器切换与设置项都改为点击展开、再次点击收回。配置管理里的「重载配置文件」与「更新订阅链接」不再点完就关闭子菜单，改为就地显示进行中与最终结果。
+
+### 📝 更新日志 (Changelog)
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **子菜单交互统一**：节点页的配置管理、代理分组与头部机器切换此前悬停即展开，设置项则需点击，两处规范不一致；现在全部改为点击展开，再次点击收回，悬停只保留高亮。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **配置动作就地反馈**：重载配置文件与更新订阅链接在子菜单内显示进行中的进度图标与文案，完成后显示绿色对勾或红色警告，并给出重载数量、订阅成功与失败条数，2.6 秒后自动清除。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **展开状态可见**：子菜单展开期间锚点行保持高亮，收起后恢复，便于判断当前是展开还是收回状态。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **点击后无反馈**：重载配置文件与更新订阅链接此前先关闭子菜单再执行，结果只写进日志；现在点击后子菜单保持打开并直接给出结果。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **子菜单无法收手**：子菜单此前在鼠标移开时自动关闭，缺少主动收回；改为点击锚点再次收回，点击面板外或应用失活时也会关闭。
+
+---
+
 ## v1.1.4
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.4-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
