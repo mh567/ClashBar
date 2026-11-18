@@ -89,6 +89,7 @@ docs/               文档站
 - 本仓库是 `Sitoi/ClashBar` 的 fork，分支模型、上游同步与分家流程见 [docs/MAINTENANCE.md](docs/MAINTENANCE.md)。
 - `main` 只放可回流上游的改动（bug 修复、测试、工程改进），靠 `Scripts/sync_upstream.sh` rebase 到上游之上。
 - 与上游必然冲突的改动（仓库标识、发布流程）放 `fork/*` 分支，不要合进 `main`。
+  `README.md` 例外：`main` 保留 fork 版 README，同步脚本会在 rebase 时保留它，改 README 时两个分支保持一致。
 - 提交信息沿用仓库风格：`<emoji> <type>: <中文摘要>`，例如 `✨ feat: 更新 v0.3.6，修复系统代理 Helper 安装问题`。
 - 只有在用户明确要求时才提交 git；不要主动 commit、push 或打 tag。
 - 版本发布优先走本地：`Scripts/release_local.sh <tag>`，完成构建 → 校验 → 创建或追加 GitHub Release。CI 的 macOS runner 按产物计配额，免费账户经常排队超时，不要把发版押在 CI 上。

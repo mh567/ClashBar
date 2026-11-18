@@ -31,6 +31,7 @@ git push origin main
 
 - `main` 没有本地提交时用 `--ff-only` 快进，历史保持线性。
 - `main` 有本地提交时改用 `rebase`，把你的修复重放到上游最新之上。
+- rebase 遇到 `README.md` 冲突时保留 `main` 的版本，其他文件的冲突仍会中断，交给人工处理。
 - 有未提交改动或不在 `main` 上时直接拒绝，避免半途状态。
 
 `git pull upstream` 不要用。`pull` 会引入 merge 提交，让后续 rebase 变复杂。
@@ -48,6 +49,10 @@ git push origin main
 
 与上游必然冲突的改动只存在于 `fork/*` 分支，不合入 `main`。这类改动通常包括：
 仓库标识与更新检查地址、文档站链接、以及发布流程中仅上游有权执行的步骤。
+
+`README.md` 是唯一的例外：GitHub 首页读取默认分支 `main` 的内容，所以 `main` 上保留
+一份 fork 版 README，由 `Scripts/sync_upstream.sh` 在同步时守护。修改 README 时先改
+`fork/personal`，再把它复制到 `main`，两边保持一致。
 
 具体清单见对应 `fork/*` 分支的提交说明，`main` 上不维护该清单，以免与上游冲突。
 

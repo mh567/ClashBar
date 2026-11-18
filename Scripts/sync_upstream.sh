@@ -54,6 +54,43 @@ if [ "$MODE" = "--check" ]; then
   exit 0
 fi
 
+# README.md on main is fork-owned: it explains the fork and links to this
+# repository's releases. Keep the local copy when it collides with an upstream
+# README change; every other conflict still stops the sync for manual handling.
+rebase_keeping_readme() {
+  local readme_snapshot conflicts
+  readme_snapshot="$(mktemp -t clashbar-main-readme.XXXXXX)"
+  git show HEAD:README.md >"$readme_snapshot"
+
+  if git rebase "${UPSTREAM_REMOTE}/main"; then
+    rm -f "$readme_snapshot"
+    return 0
+  fi
+
+  while [ -d "$(git rev-parse --git-path rebase-merge)" ] || [ -d "$(git rev-parse --git-path rebase-apply)" ]; do
+    conflicts="$(git diff --name-only --diff-filter=U)"
+    if [ "$conflicts" != "README.md" ]; then
+      rm -f "$readme_snapshot"
+      if [ -z "$conflicts" ]; then
+        echo "Rebase stopped without file conflicts; resolve manually." >&2
+      else
+        echo "Conflicts outside README.md:" >&2
+        echo "$conflicts" >&2
+        echo "Resolve them, then run: git rebase --continue" >&2
+      fi
+      return 1
+    fi
+
+    echo "Keeping the local README.md."
+    cp "$readme_snapshot" README.md
+    git add README.md
+    GIT_EDITOR=true git rebase --continue || true
+  done
+
+  rm -f "$readme_snapshot"
+  return 0
+}
+
 if [ "$ahead" -eq 0 ]; then
   # Fast-forward is preferable here: main holds no local commits.
   git merge --ff-only "${UPSTREAM_REMOTE}/main"
@@ -61,7 +98,7 @@ else
   # Local fixes are replayed on top of upstream, keeping history linear and the
   # delta easy to review or drop once upstream ships equivalent fixes.
   echo "Rebasing ${ahead} local commit(s) onto ${UPSTREAM_REMOTE}/main."
-  git rebase "${UPSTREAM_REMOTE}/main"
+  rebase_keeping_readme
 fi
 
 echo "Sync complete. Review, then push with: git push --force-with-lease origin main"
