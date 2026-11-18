@@ -488,7 +488,6 @@ struct ProxyTabView: TranslatingView {
                     content: { dismiss in
                         self.configMenuContent(dismiss: dismiss)
                     })
-                    .buttonStyle(.plain)
             }
 
             self.systemProxyQuickToggleRow
@@ -572,7 +571,7 @@ struct ProxyTabView: TranslatingView {
                     }
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MenuBarInteractionStyle(cornerRadius: T.rowHeight / 2))
         .help("\(helpTitle)\n\(helpDetail)")
     }
 
@@ -628,6 +627,20 @@ struct ProxyTabView: TranslatingView {
     }
 
     var systemProxyQuickToggleRow: some View {
+        Toggle(isOn: Binding(
+            get: { self.appViewModel.isSystemProxyEnabled },
+            set: { value in
+                Task { await self.appViewModel.toggleSystemProxy(value) }
+            }))
+        {
+            self.systemProxyQuickToggleLabel
+        }
+        .toggleStyle(MenuBarRowToggleStyle(verticalPadding: T.space2))
+        .accessibilityLabel(self.systemProxyRowTitle)
+        .disabled(self.proxyStore.isProxySyncing)
+    }
+
+    private var systemProxyQuickToggleLabel: some View {
         HStack(spacing: T.space6) {
             self.systemProxyCompositeIcon
             HStack(spacing: T.space2) {
@@ -654,22 +667,7 @@ struct ProxyTabView: TranslatingView {
                     .truncationMode(.middle)
                     .minimumScaleFactor(T.minimumScale)
             }
-
-            Spacer(minLength: 0)
-            Toggle("", isOn: Binding(
-                get: { self.appViewModel.isSystemProxyEnabled },
-                set: { value in
-                    Task { await self.appViewModel.toggleSystemProxy(value) }
-                }))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(self.proxyStore.isProxySyncing)
-                .frame(width: 50, alignment: .trailing)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, T.space4)
-        .padding(.vertical, T.space2)
     }
 
     var systemProxyInlineFailureText: String? {
@@ -714,6 +712,8 @@ struct ProxyTabView: TranslatingView {
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)
+                    .menuBarHover()
+                    .accessibilityLabel(self.tr("ui.quick.tun_mode"))
                     .disabled(!self.appViewModel.isTunToggleEnabled)
             }
         }
@@ -756,9 +756,13 @@ struct ProxyTabView: TranslatingView {
             .contentShape(Capsule(style: .continuous))
             .opacity(enabled ? 1 : 0.5)
             .onTapGesture(count: 2, perform: activate)
+            .menuBarHover(cornerRadius: T.rowHeight / 2)
+            .disabled(!enabled)
             .help(hint)
             .accessibilityLabel(option)
             .accessibilityHint(hint)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { activate() }
     }
 
     func quickIcon(symbol: String, foreground: Color) -> some View {
@@ -868,10 +872,9 @@ private struct ConfigMenuItemView: View {
 
             if let refreshPhase, let onRefresh {
                 self.refreshControl(phase: refreshPhase, onRefresh: onRefresh)
+                    .padding(.trailing, T.space6)
             }
         }
-        .padding(.horizontal, T.space6)
-        .padding(.vertical, T.space2)
         .background(
             RoundedRectangle(cornerRadius: T.cornerRadius, style: .continuous)
                 .fill(self.rowBackground))
@@ -920,9 +923,12 @@ private struct ConfigMenuItemView: View {
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, T.space6)
+            .padding(.trailing, self.onRefresh == nil ? T.space6 : 0)
+            .padding(.vertical, T.space2)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .help(self.itemHelpText ?? self.title)
     }
 

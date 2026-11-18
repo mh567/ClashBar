@@ -68,7 +68,7 @@ struct RemoteMachineManagerView: TranslatingView {
                         .foregroundStyle(self.nativeTertiaryLabel)
                         .contentShape(Circle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MenuBarInteractionStyle())
                 .help(self.editorMode != nil ? self.tr("ui.action.cancel") : self.tr("ui.action.close"))
             }
             .padding([.horizontal, .top], contentPadding)
@@ -232,7 +232,7 @@ private struct RemoteMachineRowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(MenuBarInteractionStyle())
             .disabled(!isSwitchEnabled)
 
             HStack(spacing: T.space6) {
@@ -365,6 +365,8 @@ private struct RemoteMachineEditorView: TranslatingView {
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .controlSize(.regular)
+                        .menuBarHover()
+                        .accessibilityLabel("HTTPS")
                 }
             }
 

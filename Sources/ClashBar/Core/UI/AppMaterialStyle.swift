@@ -32,9 +32,9 @@ extension View {
     @ViewBuilder
     func appBorderedButtonStyle(prominent: Bool = false) -> some View {
         if prominent {
-            self.buttonStyle(.borderedProminent)
+            self.buttonStyle(.borderedProminent).menuBarHover()
         } else {
-            self.buttonStyle(.bordered)
+            self.buttonStyle(.bordered).menuBarHover()
         }
     }
 }

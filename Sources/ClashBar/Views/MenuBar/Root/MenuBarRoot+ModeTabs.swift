@@ -134,7 +134,8 @@ extension MenuBarRootView {
                 .contentShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MenuBarInteractionStyle(cornerRadius: style.cornerRadius))
+        .disabled(!self.appViewModel.isModeSwitchEnabled || self.switchingMode != nil)
         .onHover { hoveredMode = self.nextHovered(current: hoveredMode, target: mode, isHovering: $0) }
         .animation(.snappy(duration: 0.18), value: appViewModel.currentMode)
         .animation(.easeOut(duration: 0.12), value: hoveredMode)
@@ -175,11 +176,14 @@ extension MenuBarRootView {
                         .frame(width: style.indicatorWidth, height: 2)
                         .padding(.bottom, style.indicatorBottomPadding)
                         .matchedGeometryEffect(id: style.selectionIndicatorID, in: self.segmentedSelectionNamespace)
+                        .allowsHitTesting(false)
                 }
             }
+            .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MenuBarInteractionStyle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
         .onHover { hoveredTab = self.nextHovered(current: hoveredTab, target: tab, isHovering: $0) }
         .animation(.snappy(duration: 0.18), value: self.rootViewModel.currentTab)
         .animation(.easeOut(duration: 0.12), value: hoveredTab)

@@ -1,3 +1,23 @@
+## v1.1.3
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.3-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 改善菜单栏面板的点击区域、悬停反馈和按钮提示。
+
+### 📝 更新日志 (Changelog)
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **面板操作**：顶部标签整块可点，配置管理、系统代理和设置控件支持整行操作，菜单项和按钮的悬停反馈更清楚。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **按钮提示**：将鼠标停在顶部按钮上，可查看固定面板、控制内核和退出应用等操作的说明。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **菜单栏面板关闭**：修复再次点击状态栏图标无法收起面板的问题。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **节点延迟显示**：统一嵌套分组与主列表中节点的延迟取值。
+
+---
+
 ## v1.1.2
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.2-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

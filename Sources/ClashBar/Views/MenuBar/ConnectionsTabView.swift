@@ -246,12 +246,15 @@ struct ConnectionsTabView: TranslatingView {
         } label: {
             Image(systemName: "xmark")
                 .font(.app(size: T.FontSize.caption, weight: .semibold))
-                .frame(width: 10, height: 10)
+                .frame(width: 12, height: 12)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MenuBarInteractionStyle())
         .foregroundStyle(hovered ? nativeSecondaryLabel : nativeTertiaryLabel)
         .frame(width: 12, height: 12)
         .opacity(hovered ? 1 : 0)
+        .allowsHitTesting(hovered)
+        .accessibilityLabel(self.tr("ui.action.close_connection"))
+        .help(self.tr("ui.action.close_connection"))
     }
 
     @ViewBuilder

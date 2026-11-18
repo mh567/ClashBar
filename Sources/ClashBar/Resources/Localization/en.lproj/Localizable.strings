@@ -19,7 +19,9 @@
 "ui.header.status.stopped" = "Stopped";
 
 "ui.action.stop" = "Stop";
+"ui.action.stop.help" = "Stop the mihomo core";
 "ui.action.quit" = "Quit";
+"ui.action.quit.help" = "Quit ClashBar, stopping the core and clearing the system proxy";
 "ui.action.test_latency" = "Test Latency";
 "ui.action.show_hidden_proxy_groups" = "Show hidden proxy groups";
 "ui.action.hide_hidden_proxy_groups" = "Hide hidden proxy groups";
@@ -259,6 +261,8 @@
 "app.primary.processing" = "Processing...";
 "app.primary.restart" = "Restart Core";
 "app.primary.start" = "Start Core";
+"app.primary.start.help" = "Start the mihomo core";
+"app.primary.restart.help" = "Restart the mihomo core without restarting or quitting ClashBar";
 
 "app.settings.error.port_range" = "%@ port must be in 0~65535";
 "app.settings.saved.ports" = "Proxy ports saved";
@@ -432,7 +436,9 @@
 "fmt.expiry_short.days" = "%d days left";
 "fmt.expiry_short.long_term" = "Permanent";
 "ui.action.pin" = "Pin";
+"ui.action.pin.help" = "Keep the panel open when clicking elsewhere";
 "ui.action.unpin" = "Unpin";
+"ui.action.unpin.help" = "Close the panel when clicking elsewhere";
 
 // Remote config subscription
 "ui.quick.remote.auto_update_label" = "Auto Update";

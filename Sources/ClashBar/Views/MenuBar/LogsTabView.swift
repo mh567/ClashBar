@@ -144,6 +144,7 @@ struct LogsTabView: TranslatingView {
         }
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
+        .menuBarHover(cornerRadius: T.rowHeight / 2)
         .help(self.tr("ui.settings.log_level"))
     }
 

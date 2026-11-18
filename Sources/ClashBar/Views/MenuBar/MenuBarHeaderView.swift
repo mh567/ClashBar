@@ -53,7 +53,7 @@ struct MenuBarHeaderView: TranslatingView {
                     }
                     .frame(width: self.headerLogoSize, height: self.headerLogoSize)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MenuBarInteractionStyle())
                 .help(self.tr("ui.action.open_project_homepage"))
                 .accessibilityLabel(self.tr("ui.action.open_project_homepage"))
 
@@ -78,7 +78,10 @@ struct MenuBarHeaderView: TranslatingView {
                 self.compactTopIcon(
                     self.appViewModel.isPinned ? "pin.fill" : "pin",
                     label: self.appViewModel.isPinned ? self.tr("ui.action.unpin") : self.tr("ui.action.pin"),
-                    toneOverride: self.appViewModel.isPinned ? nativeInfo : nativeTertiaryLabel)
+                    toneOverride: self.appViewModel.isPinned ? nativeInfo : nativeTertiaryLabel,
+                    helpText: self.appViewModel.isPinned
+                        ? self.tr("ui.action.unpin.help")
+                        : self.tr("ui.action.pin.help"))
                 {
                     self.appViewModel.togglePinned()
                 }
@@ -86,7 +89,10 @@ struct MenuBarHeaderView: TranslatingView {
                 self.compactTopIcon(
                     "arrow.clockwise",
                     label: self.appViewModel.primaryCoreActionLabel,
-                    toneOverride: nativeInfo)
+                    toneOverride: nativeInfo,
+                    helpText: self.appViewModel.isRuntimeRunning
+                        ? self.tr("app.primary.restart.help")
+                        : self.tr("app.primary.start.help"))
                 {
                     await self.appViewModel.performPrimaryCoreAction()
                 }
@@ -98,7 +104,10 @@ struct MenuBarHeaderView: TranslatingView {
                     self.appViewModel.isRuntimeRunning ? "stop.circle" : "play.circle",
                     label: self.appViewModel.isRuntimeRunning ? self.tr("ui.action.stop") : self
                         .tr("app.primary.start"),
-                    toneOverride: self.appViewModel.isRuntimeRunning ? nativeWarning : nativePositive)
+                    toneOverride: self.appViewModel.isRuntimeRunning ? nativeWarning : nativePositive,
+                    helpText: self.appViewModel.isRuntimeRunning
+                        ? self.tr("ui.action.stop.help")
+                        : self.tr("app.primary.start.help"))
                 {
                     if self.appViewModel.isRuntimeRunning {
                         await self.appViewModel.stopCore()
@@ -109,7 +118,12 @@ struct MenuBarHeaderView: TranslatingView {
                 .disabled(self.appViewModel.isRemoteTarget || self.appViewModel.isCoreActionProcessing)
                 .opacity((self.appViewModel.isRemoteTarget || self.appViewModel.isCoreActionProcessing) ? 0.6 : 1)
 
-                self.compactTopIcon("power", label: self.tr("ui.action.quit"), warning: true) {
+                self.compactTopIcon(
+                    "power",
+                    label: self.tr("ui.action.quit"),
+                    warning: true,
+                    helpText: self.tr("ui.action.quit.help"))
+                {
                     await self.appViewModel.quitApp()
                 }
             }
@@ -157,6 +171,8 @@ struct MenuBarHeaderView: TranslatingView {
                         .font(.system(size: 8, weight: .semibold))
                         .foregroundStyle(nativeTertiaryLabel)
                 }
+                .padding(.horizontal, T.space4)
+                .padding(.vertical, T.space2)
                 .contentShape(Rectangle())
             },
             content: { dismiss in
@@ -232,7 +248,7 @@ struct MenuBarHeaderView: TranslatingView {
                 .font(.app(size: T.FontSize.caption, weight: .semibold))
                 .foregroundStyle(self.nativeSecondaryLabel)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MenuBarInteractionStyle())
         .help("Open WebUI")
         .accessibilityLabel("Open WebUI")
         .disabled(self.isSwitchingMachine)

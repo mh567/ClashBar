@@ -8,10 +8,12 @@ struct AttachedPopoverMenu<Label: View, Content: View>: View {
     let width: CGFloat?
     let maxHeight: CGFloat?
     let expandAnchor: Bool
+    let opensOnHover: Bool
     let onWillPresent: (() -> Void)?
     let label: (_ isHovered: Bool) -> Label
     let content: (_ dismiss: @escaping () -> Void) -> Content
 
+    @Environment(\.isEnabled) private var isEnabled
     @State private var isAnchorHovered = false
     @State private var isPopoverRequested = false
     @State private var suppressAutoOpen = false
@@ -22,6 +24,7 @@ struct AttachedPopoverMenu<Label: View, Content: View>: View {
         width: CGFloat? = nil,
         maxHeight: CGFloat? = nil,
         expandAnchor: Bool = true,
+        opensOnHover: Bool = true,
         onWillPresent: (() -> Void)? = nil,
         @ViewBuilder label: @escaping (_ isHovered: Bool) -> Label,
         @ViewBuilder content: @escaping (_ dismiss: @escaping () -> Void) -> Content)
@@ -29,6 +32,7 @@ struct AttachedPopoverMenu<Label: View, Content: View>: View {
         self.width = width
         self.maxHeight = maxHeight
         self.expandAnchor = expandAnchor
+        self.opensOnHover = opensOnHover
         self.onWillPresent = onWillPresent
         self.label = label
         self.content = content
@@ -38,11 +42,13 @@ struct AttachedPopoverMenu<Label: View, Content: View>: View {
         Button(action: self.activateAnchor) {
             self.anchorLabel
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MenuBarInteractionStyle())
         .onHover { hovering in
+            guard self.isEnabled else { return }
             self.isAnchorHovered = hovering
 
-            if hovering, !self.suppressAutoOpen {
+            if hovering {
+                guard self.opensOnHover, !self.suppressAutoOpen else { return }
                 if self.shouldBuildPopoverContent {
                     self.isPopoverRequested = true
                 } else {
@@ -58,10 +64,11 @@ struct AttachedPopoverMenu<Label: View, Content: View>: View {
                 self.popoverOpenTask?.cancel()
                 self.popoverOpenTask = nil
                 self.isPopoverRequested = false
-            }
-            if !hovering {
                 self.suppressAutoOpen = false
             }
+        }
+        .task(id: self.isEnabled) {
+            if !self.isEnabled { self.dismissPopover() }
         }
         .onDisappear {
             self.popoverOpenTask?.cancel()
@@ -130,6 +137,7 @@ struct AttachedPopoverMenu<Label: View, Content: View>: View {
     }
 
     private func activateAnchor() {
+        guard self.isEnabled else { return }
         self.popoverOpenTask?.cancel()
         self.popoverOpenTask = nil
         self.requestOpen()
@@ -164,7 +172,12 @@ struct AttachedPopoverMenuItem: View {
     var selectionIndicatorPlacement: SelectionIndicatorPlacement = .leading
     var destructive: Bool = false
     let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
     @State private var isHovered = false
+
+    private var isHighlighted: Bool {
+        self.isEnabled && self.isHovered
+    }
 
     var body: some View {
         Button {
@@ -200,7 +213,7 @@ struct AttachedPopoverMenuItem: View {
                             .font(.app(size: T.FontSize.caption, weight: .regular))
                             .lineLimit(1)
                             .truncationMode(.middle)
-                            .foregroundStyle(self.isHovered ? self.nativeSelectedMenuText
+                            .foregroundStyle(self.isHighlighted ? self.nativeSelectedMenuText
                                 .opacity(0.9) : self.nativeSecondaryLabel)
                     }
                 }
@@ -232,25 +245,25 @@ struct AttachedPopoverMenuItem: View {
     }
 
     private var itemForeground: Color {
-        if self.isHovered {
+        if self.isHighlighted {
             return self.nativeSelectedMenuText
         }
         return self.destructive ? .red : self.nativePrimaryLabel
     }
 
     private var itemBackground: Color {
-        self.isHovered ? self.nativeHoverFill : .clear
+        self.isHighlighted ? self.nativeHoverFill : .clear
     }
 
     private var trailingSelectionForeground: Color {
-        if self.isHovered {
+        if self.isHighlighted {
             return self.nativeSelectedMenuText
         }
         return self.nativeAccent
     }
 
     private var trailingStatusForeground: Color {
-        if self.isHovered {
+        if self.isHighlighted {
             return self.nativeSelectedMenuText.opacity(0.96)
         }
         return self.trailingStatusTextColor ?? self.nativeSecondaryLabel

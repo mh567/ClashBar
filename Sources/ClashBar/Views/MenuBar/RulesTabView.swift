@@ -224,9 +224,8 @@ struct RulesTabView: TranslatingView {
             }
             .padding(.horizontal, T.space4)
             .frame(height: T.rowHeight)
-            .background(nativeHoverRowBackground(hovered))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MenuBarInteractionStyle())
         .onHover { self.hoveredGroupPolicy = self.nextHovered(
             current: self.hoveredGroupPolicy, target: group.policy, isHovering: $0) }
     }

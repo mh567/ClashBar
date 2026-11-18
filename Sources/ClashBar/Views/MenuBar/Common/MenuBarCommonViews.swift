@@ -102,7 +102,7 @@ extension MenuBarRootView {
             Link(destination: url) {
                 self.footerInfoLabel(text, iconSystemName: iconSystemName)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(MenuBarInteractionStyle())
         } else {
             self.footerInfoLabel(text, iconSystemName: iconSystemName)
         }
@@ -240,7 +240,7 @@ extension MenuBarRootView {
         } label: {
             self.footerVersionBadge(text: title, symbol: nil, tint: self.nativeAccent, emphasized: update != nil)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MenuBarInteractionStyle())
         .disabled(checking || installing)
         .confirmationDialog(
             tr("app.update.confirm.title"),
@@ -290,7 +290,7 @@ extension MenuBarRootView {
 
         if let url = self.appViewModel.availableAppUpdate?.releaseURL ?? self.appViewModel.appReleaseIndexURL {
             Link(destination: url) { badge }
-                .buttonStyle(.plain)
+                .buttonStyle(MenuBarInteractionStyle())
                 .help(tr("ui.footer.version_releases_help"))
         } else {
             badge
@@ -449,7 +449,7 @@ extension View {
             }
             .contentShape(Capsule(style: .continuous))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(MenuBarInteractionStyle(cornerRadius: T.rowHeight / 2))
     }
 
     func nativeRowFill(active: Bool, hovered: Bool) -> Color {
@@ -534,6 +534,7 @@ extension View {
         size: CGFloat = 20,
         fontSize: CGFloat = T.FontSize.body,
         hierarchicalSymbol: Bool = false,
+        helpText: String? = nil,
         action: @escaping () async -> Void) -> some View
     {
         CompactAsyncIconButton(
@@ -546,6 +547,7 @@ extension View {
             fontSize: fontSize,
             hierarchicalSymbol: hierarchicalSymbol,
             action: action)
+            .help(helpText ?? label)
             .accessibilityLabel(label)
     }
 
@@ -556,6 +558,7 @@ extension View {
         warning: Bool = false,
         toneOverride: Color? = nil,
         isLoading: Bool = false,
+        helpText: String? = nil,
         action: @escaping () async -> Void) -> some View
     {
         let tone: Color = if let toneOverride {
@@ -572,6 +575,7 @@ extension View {
             tint: tone.opacity(T.Opacity.solid),
             role: role,
             isLoading: isLoading,
+            helpText: helpText,
             action: action)
     }
 
@@ -677,7 +681,7 @@ struct CompactAsyncIconButton: View {
             .frame(width: self.size, height: self.size)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(MenuBarInteractionStyle())
         .disabled(self.isLoading)
         .onHover { self.hovered = $0 }
     }

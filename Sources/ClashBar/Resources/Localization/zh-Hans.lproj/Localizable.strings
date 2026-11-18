@@ -19,7 +19,9 @@
 "ui.header.status.stopped" = "已停止";
 
 "ui.action.stop" = "停止";
+"ui.action.stop.help" = "停止 mihomo 内核";
 "ui.action.quit" = "退出";
+"ui.action.quit.help" = "退出 ClashBar，同时停止内核并清理系统代理";
 "ui.action.test_latency" = "延迟测试";
 "ui.action.show_hidden_proxy_groups" = "显示 hidden 代理组";
 "ui.action.hide_hidden_proxy_groups" = "隐藏 hidden 代理组";
@@ -44,7 +46,9 @@
 "ui.action.delete" = "删除";
 "ui.action.cancel" = "取消";
 "ui.action.pin" = "固定";
+"ui.action.pin.help" = "固定面板，点击其他位置时保持打开";
 "ui.action.unpin" = "取消固定";
+"ui.action.unpin.help" = "取消固定，点击其他位置时自动关闭";
 "ui.action.close" = "关闭";
 "ui.action.ok" = "确定";
 "ui.action.flush_fakeip_cache" = "清理 FakeIP 缓存";
@@ -261,6 +265,8 @@
 "app.primary.processing" = "处理中...";
 "app.primary.restart" = "重启内核";
 "app.primary.start" = "启动内核";
+"app.primary.start.help" = "启动 mihomo 内核";
+"app.primary.restart.help" = "重启 mihomo 内核，不会重启或退出 ClashBar";
 
 "app.settings.error.port_range" = "%@ 端口必须在 0~65535";
 "app.settings.saved.ports" = "代理端口已保存";

@@ -51,17 +51,12 @@ struct SystemTabView: TranslatingView {
         isOn: Binding<Bool>,
         isDisabled: Bool = false) -> some View
     {
-        HStack(spacing: T.space8) {
+        Toggle(isOn: isOn) {
             self.settingsRowLabel(symbol: symbol, title: title)
                 .layoutPriority(1)
-            Spacer(minLength: 0)
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(isDisabled)
         }
-        .menuRowPadding(vertical: T.space4)
+        .toggleStyle(MenuBarRowToggleStyle(verticalPadding: T.space4))
+        .disabled(isDisabled)
     }
 
     func settingsMenuRow(
@@ -74,11 +69,11 @@ struct SystemTabView: TranslatingView {
     {
         let resolvedControlWidth = controlWidth ?? self.settingsMenuControlWidth
 
-        return HStack(spacing: T.space8) {
-            self.settingsRowLabel(symbol: symbol, title: title)
-                .layoutPriority(1)
-            Spacer(minLength: 0)
-            AttachedPopoverMenu(width: popoverWidth ?? resolvedControlWidth) { _ in
+        return AttachedPopoverMenu(width: popoverWidth ?? resolvedControlWidth, opensOnHover: false) { _ in
+            HStack(spacing: T.space8) {
+                self.settingsRowLabel(symbol: symbol, title: title)
+                    .layoutPriority(1)
+                Spacer(minLength: 0)
                 HStack(spacing: T.space2) {
                     Text(valueText)
                         .foregroundStyle(nativeSecondaryLabel)
@@ -89,15 +84,14 @@ struct SystemTabView: TranslatingView {
                         .foregroundStyle(nativeTertiaryLabel)
                 }
                 .font(.app(size: T.FontSize.caption, weight: .medium))
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            } content: { dismiss in
-                options(dismiss)
+                .frame(width: resolvedControlWidth, alignment: .trailing)
             }
-            .frame(width: resolvedControlWidth, alignment: .trailing)
-            .appBorderedButtonStyle()
-            .controlSize(.small)
+            .menuRowPadding(vertical: T.space4)
+        } content: { dismiss in
+            options(dismiss)
         }
-        .menuRowPadding(vertical: T.space4)
+        .accessibilityLabel(title)
+        .accessibilityValue(valueText)
     }
 
     private func settingsSelectionRow(
@@ -172,6 +166,7 @@ struct SystemTabView: TranslatingView {
                     .foregroundStyle(nativeCritical.opacity(T.Opacity.solid))
             }
             .buttonStyle(.borderless)
+            .menuBarHover()
             .accessibilityLabel(self.tr("ui.action.remove_exception"))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -440,7 +435,7 @@ struct SystemTabView: TranslatingView {
                     }
                     .menuRowPadding(vertical: T.space4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MenuBarInteractionStyle())
 
                 VStack(alignment: .leading, spacing: T.space4) {
                     Text(self.tr("ui.settings.system_proxy_exceptions_hint"))

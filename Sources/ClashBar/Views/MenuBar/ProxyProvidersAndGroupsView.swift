@@ -24,7 +24,7 @@ extension ProxyTabView {
                         .foregroundStyle(nativeSecondaryLabel)
                         .frame(width: T.rowLeadingIcon, height: T.rowLeadingIcon)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MenuBarInteractionStyle())
                 .accessibilityLabel(label)
                 .help(label)
             }
@@ -107,7 +107,8 @@ extension ProxyTabView {
                     }
                     .frame(width: T.rowLeadingIcon, height: T.rowLeadingIcon)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(MenuBarInteractionStyle())
+                .disabled(isUpdating)
                 .accessibilityLabel(tr("ui.action.refresh"))
             }
 
