@@ -3,13 +3,16 @@ import Foundation
 enum AppReleaseServiceError: Error {
     case invalidResponse
     case statusCode(Int)
+    case invalidReleaseURL
 }
 
 enum AppReleaseService {
-    private static let latestReleaseURL = URL(string: "https://api.github.com/repos/Sitoi/ClashBar/releases/latest")!
-
     static func fetchLatestRelease(currentVersion: String) async throws -> AppReleaseInfo {
-        var request = URLRequest(url: Self.latestReleaseURL)
+        guard let latestReleaseURL = AppReleaseSource.latestReleaseURL else {
+            throw AppReleaseServiceError.invalidReleaseURL
+        }
+
+        var request = URLRequest(url: latestReleaseURL)
         request.timeoutInterval = 8
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")

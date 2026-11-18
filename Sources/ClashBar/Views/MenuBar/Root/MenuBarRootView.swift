@@ -55,6 +55,7 @@ struct MenuBarRootView: TranslatingView {
     @StateObject var rootViewModel = ProxyGroupsViewModel()
     @Namespace var segmentedSelectionNamespace
 
+    @State var appUpdateCheckMessageKey: String?
     @State var switchingMode: CoreMode?
     @State var isSwitchingMachine = false
     @State var showRemoteMachineManager = false

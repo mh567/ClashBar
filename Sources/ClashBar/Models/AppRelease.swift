@@ -6,6 +6,7 @@ struct AppReleaseInfo: Decodable, Equatable {
     let releaseURL: URL
     let isDraft: Bool
     let isPrerelease: Bool
+    private let assets: [Asset]?
 
     private enum CodingKeys: String, CodingKey {
         case tagName = "tag_name"
@@ -13,6 +14,37 @@ struct AppReleaseInfo: Decodable, Equatable {
         case releaseURL = "html_url"
         case isDraft = "draft"
         case isPrerelease = "prerelease"
+        case assets
+    }
+
+    struct Asset: Decodable, Equatable {
+        let name: String
+        let downloadURL: URL
+        let digest: String?
+
+        private enum CodingKeys: String, CodingKey {
+            case name, digest
+            case downloadURL = "browser_download_url"
+        }
+
+        var sha256: String? {
+            guard let digest, digest.hasPrefix("sha256:") else { return nil }
+            let hash = digest.dropFirst("sha256:".count)
+            guard hash.utf8.count == 64, hash.utf8.allSatisfy({
+                (48...57).contains($0) || (97...102).contains($0)
+            }) else { return nil }
+            return String(hash)
+        }
+    }
+
+    func installableAsset(architecture: String, bundlesCore: Bool) -> Asset? {
+        let suffix = bundlesCore ? architecture : "\(architecture)-no-core"
+        let name = "ClashBar-\(self.displayVersion)-\(suffix).dmg"
+        let expectedURL = AppReleaseSource.releasesPageURL?
+            .appendingPathComponent("download")
+            .appendingPathComponent(self.tagName)
+            .appendingPathComponent(name)
+        return self.assets?.first { $0.name == name && $0.downloadURL == expectedURL && $0.sha256 != nil }
     }
 
     var displayVersion: String {

@@ -199,8 +199,16 @@
 
 "ui.footer.core_mihomo" = "MIHOMO %@";
 "ui.footer.version" = "v%@";
-"ui.footer.version_update_help" = "查看 v%@ 版本说明";
-"ui.footer.version_update_accessibility" = "当前版本 v%@，可更新到 v%@。";
+"ui.footer.version_releases_help" = "查看版本说明";
+"ui.footer.app_update.install" = "更新到 v%@";
+"ui.footer.app_update.installing" = "更新中…";
+"ui.footer.app_update.no_asset" = "没有适合当前客户端且可校验的更新包";
+"ui.footer.app_update.install_location" = "请将 ClashBar 移到可写的「应用程序」文件夹";
+"ui.footer.app_update.install_failed" = "ClashBar 更新安装失败";
+"ui.footer.app_update.check" = "检测更新";
+"ui.footer.app_update.checking" = "检测中…";
+"ui.footer.app_update.latest" = "ClashBar 已是最新版本";
+"ui.footer.app_update.failed" = "检测更新失败";
 "ui.footer.core_upgrade.running" = "更新中...";
 "ui.footer.core_upgrade.success" = "已更新";
 "ui.footer.core_upgrade.latest" = "已是最新";
