@@ -370,17 +370,23 @@ extension ProxyTabView {
             FrozenPopoverNodesList(nodes: nodes, emptyText: tr("ui.common.na")) { node in
                 let nodeSamples = appViewModel.delaySamples(group: group.name, node: node)
                 let nodeDelay = nodeSamples.last
+                let nestedGroup = appViewModel.proxyGroup(named: node)
                 ProxyGroupPopoverNodeItem(
                     title: node,
                     typeText: proxyStore.proxyNodeTypes[node].trimmedNonEmpty,
                     delayText: appViewModel.delayText(group: group.name, node: node),
                     delaySamples: nodeSamples,
                     delayColor: latencyColor(nodeDelay),
-                    isTesting: appViewModel.isProxyLatencyTesting(group: group.name, node: node),
+                    isTesting: nestedGroup.map { proxyStore.groupLatencyLoading.contains($0.name) }
+                        ?? appViewModel.isProxyLatencyTesting(group: group.name, node: node),
                     selected: node == group.now,
                     testLatencyLabel: tr("ui.action.test_latency"),
                     onTestLatency: {
-                        await appViewModel.refreshProxyLatency(group: group.name, node: node)
+                        if let nestedGroup {
+                            await appViewModel.refreshGroupLatency(nestedGroup)
+                        } else {
+                            await appViewModel.refreshProxyLatency(group: group.name, node: node)
+                        }
                     },
                     action: {
                         dismiss()

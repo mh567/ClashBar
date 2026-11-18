@@ -209,11 +209,21 @@ extension AppViewModel {
     }
 
     func delaySamples(group: String, node: String, fallbackToGroupHistory: Bool = false) -> [Int] {
-        let testURL = self.healthcheckURL(for: self.proxyGroups.first { $0.name == group })
-        if let samples = self.proxyDelaySamples[node]?[testURL], !samples.isEmpty {
-            return samples
-        }
-        return fallbackToGroupHistory ? self.proxyDelaySamples[group]?[testURL] ?? [] : []
+        self.groupLatencyLookup.groupedSamples(
+            groupName: group,
+            node: node,
+            fallbackToGroupHistory: fallbackToGroupHistory)
+    }
+
+    func proxyGroup(named name: String) -> ProxyGroup? {
+        self.proxyGroups.first { $0.name == name }
+    }
+
+    private var groupLatencyLookup: ProxyGroupLatencyLookup {
+        ProxyGroupLatencyLookup(
+            groups: self.proxyGroups,
+            samples: self.proxyDelaySamples,
+            defaultURL: self.defaultHealthcheckURL)
     }
 
     func controllerHost() -> String {
