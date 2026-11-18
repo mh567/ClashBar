@@ -86,7 +86,7 @@ final class AppViewModel: ObservableObject {
         set { self.proxyStore.proxyLatencyTesting = newValue }
     }
 
-    var proxyDelaySamples: [String: [Int]] {
+    var proxyDelaySamples: [String: [String: [Int]]] {
         get { self.proxyStore.proxyDelaySamples }
         set { self.proxyStore.proxyDelaySamples = newValue }
     }

@@ -4,6 +4,19 @@ enum ProxyDelayHistory {
     static let limit = 4
 }
 
+struct ProxyProbeHistory: Decodable {
+    let samples: [Int]
+
+    private enum CodingKeys: String, CodingKey {
+        case history
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.samples = container.decodeDelayHistory(forKey: .history)
+    }
+}
+
 struct ProxyGroupsResponse: Decodable, Equatable {
     let proxies: [String: ProxyGroup]
 }
@@ -17,7 +30,7 @@ struct ProxyGroup: Decodable, Equatable {
     let timeout: Int?
     let icon: String?
     let hidden: Bool?
-    let delayHistory: [Int]
+    let delayHistoryByURL: [String: [Int]]
 
     init(
         name: String,
@@ -28,7 +41,7 @@ struct ProxyGroup: Decodable, Equatable {
         timeout: Int? = nil,
         icon: String? = nil,
         hidden: Bool? = nil,
-        delayHistory: [Int] = [])
+        delayHistoryByURL: [String: [Int]] = [:])
     {
         self.name = name
         self.type = type
@@ -38,7 +51,7 @@ struct ProxyGroup: Decodable, Equatable {
         self.timeout = timeout.positiveOrNil
         self.icon = icon.trimmedNonEmpty
         self.hidden = hidden
-        self.delayHistory = delayHistory
+        self.delayHistoryByURL = delayHistoryByURL
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -50,7 +63,7 @@ struct ProxyGroup: Decodable, Equatable {
         case timeout
         case icon
         case hidden
-        case history
+        case extra
     }
 
     init(from decoder: Decoder) throws {
@@ -63,7 +76,8 @@ struct ProxyGroup: Decodable, Equatable {
         self.timeout = container.decodeFlexibleInt(forKey: .timeout).positiveOrNil
         self.icon = try container.decodeIfPresent(String.self, forKey: .icon).trimmedNonEmpty
         self.hidden = try container.decodeIfPresent(Bool.self, forKey: .hidden)
-        self.delayHistory = container.decodeDelayHistory(forKey: .history)
+        self.delayHistoryByURL = (try? container.decode([String: ProxyProbeHistory].self, forKey: .extra))?
+            .mapValues(\.samples) ?? [:]
     }
 }
 

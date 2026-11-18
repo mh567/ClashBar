@@ -106,11 +106,13 @@ final class ConnectionSnapshotDecodingTests: XCTestCase {
 
     func testDelayHistoryIsTrimmedToLimit() throws {
         let entries = (1...10).map { #"{"delay":\#($0)}"# }.joined(separator: ",")
-        let json = Data(#"{"history":[\#(entries)]}"#.utf8)
+        let url = "https://example.com"
+        let json = Data(#"{"extra":{"\#(url)":{"history":[\#(entries)]}}}"#.utf8)
         let node = try JSONDecoder().decode(ProviderProxyNode.self, from: json)
+        let samples = try XCTUnwrap(node.delayHistoryByURL[url])
 
-        XCTAssertEqual(node.delayHistory.count, ProxyDelayHistory.limit)
-        XCTAssertEqual(node.delayHistory.last, 10)
+        XCTAssertEqual(samples.count, ProxyDelayHistory.limit)
+        XCTAssertEqual(samples.last, 10)
     }
 
     func testFlexibleBoolAndStringDecoding() throws {
@@ -119,5 +121,33 @@ final class ConnectionSnapshotDecodingTests: XCTestCase {
 
         XCTAssertEqual(config.tunEnabled, true)
         XCTAssertEqual(config.tun?.stack, "123")
+    }
+}
+
+final class ProxyDelayHistoryTests: XCTestCase {
+    func testSharedDirectHistoryKeepsProbeURLsIndependent() throws {
+        let payload = Data("""
+        {
+          "name": "DIRECT",
+          "history": [{"delay": 21}, {"delay": 0}],
+          "extra": {
+            "http://connect.rom.miui.com/generate_204": {"history": [{"delay": 21}]},
+            "https://www.gstatic.com/generate_204": {"history": [{"delay": 0}]}
+          }
+        }
+        """.utf8)
+
+        let proxy = try JSONDecoder().decode(ProxyGroup.self, from: payload)
+        let providerNode = try JSONDecoder().decode(ProviderProxyNode.self, from: payload)
+        XCTAssertEqual(proxy.delayHistoryByURL["http://connect.rom.miui.com/generate_204"], [21])
+        XCTAssertEqual(proxy.delayHistoryByURL["https://www.gstatic.com/generate_204"], [0])
+        XCTAssertNil(proxy.delayHistoryByURL["https://example.com"])
+        XCTAssertEqual(proxy.delayHistoryByURL, providerNode.delayHistoryByURL)
+    }
+
+    func testUnscopedHistoryCannotEstablishProbeResult() throws {
+        let payload = Data(#"{"name":"DIRECT","history":[{"delay":0}]}"#.utf8)
+        let proxy = try JSONDecoder().decode(ProxyGroup.self, from: payload)
+        XCTAssertTrue(proxy.delayHistoryByURL.isEmpty)
     }
 }

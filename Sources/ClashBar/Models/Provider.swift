@@ -103,25 +103,26 @@ struct ProviderSubscriptionInfo: Decodable, Equatable {
 struct ProviderProxyNode: Decodable, Equatable {
     let name: String
     let type: String?
-    let delayHistory: [Int]
+    let delayHistoryByURL: [String: [Int]]
 
     private enum CodingKeys: String, CodingKey {
         case name
         case type
-        case history
+        case extra
     }
 
-    init(name: String, type: String? = nil, delayHistory: [Int] = []) {
+    init(name: String, type: String? = nil, delayHistoryByURL: [String: [Int]] = [:]) {
         self.name = name
         self.type = type
-        self.delayHistory = delayHistory
+        self.delayHistoryByURL = delayHistoryByURL
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? "-"
         self.type = try container.decodeIfPresent(String.self, forKey: .type)
-        self.delayHistory = container.decodeDelayHistory(forKey: .history)
+        self.delayHistoryByURL = (try? container.decode([String: ProxyProbeHistory].self, forKey: .extra))?
+            .mapValues(\.samples) ?? [:]
     }
 }
 

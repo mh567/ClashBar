@@ -15,7 +15,9 @@ final class ProxyStore: ObservableObject {
         willSet { self.publishChangeIfNeeded(current: self.proxyLatencyTesting, next: newValue) }
     }
 
-    var proxyDelaySamples: [String: [Int]] = [:] {
+    var proxySnapshotRequestID = UUID()
+
+    var proxyDelaySamples: [String: [String: [Int]]] = [:] {
         willSet { self.publishChangeIfNeeded(current: self.proxyDelaySamples, next: newValue) }
     }
 

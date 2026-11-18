@@ -132,15 +132,20 @@ extension AppViewModel {
     }
 
     func refreshGroupLatency(_ group: ProxyGroup) async {
+        await self.measureGroupLatency(group)
+        await self.refreshProxyGroups()
+    }
+
+    private func measureGroupLatency(_ group: ProxyGroup) async {
+        guard !self.groupLatencyLoading.contains(group.name) else { return }
         groupLatencyLoading.insert(group.name)
         defer { groupLatencyLoading.remove(group.name) }
 
-        let testURL = group.testUrl?.trimmedNonEmpty ?? defaultHealthcheckURL
+        let testURL = self.healthcheckURL(for: group)
         let timeout = group.timeout.flatMap { $0 > 0 ? $0 : nil } ?? defaultHealthcheckTimeoutMilliseconds
         await runRefresh {
-            let response: GroupDelayMeasurement = try await self.clientOrThrow().request(
+            try await self.clientOrThrow().requestNoResponse(
                 .groupDelay(name: group.name, url: testURL, timeout: timeout))
-            self.applyMeasuredNodeDelays(response.values)
         }
     }
 
@@ -154,10 +159,11 @@ extension AppViewModel {
         await withTaskGroup(of: Void.self) { taskGroup in
             for group in groups {
                 taskGroup.addTask { [weak self] in
-                    await self?.refreshGroupLatency(group)
+                    await self?.measureGroupLatency(group)
                 }
             }
         }
+        await self.refreshProxyGroups()
     }
 
     func isProxyLatencyTesting(group: String, node: String) -> Bool {
@@ -172,30 +178,18 @@ extension AppViewModel {
         defer { self.proxyLatencyTesting.remove(key) }
 
         let proxyGroup = self.proxyGroups.first { $0.name == group }
-        let testURL = proxyGroup?.testUrl?.trimmedNonEmpty ?? defaultHealthcheckURL
+        let testURL = self.healthcheckURL(for: proxyGroup)
         let timeout = proxyGroup?.timeout.flatMap { $0 > 0 ? $0 : nil } ?? defaultHealthcheckTimeoutMilliseconds
 
         await runRefresh {
-            let response: DelayMeasurement = try await self.clientOrThrow().request(
+            try await self.clientOrThrow().requestNoResponse(
                 .proxyDelay(name: node, url: testURL, timeout: timeout))
-            guard let value = response.value else { return }
-            self.applyMeasuredNodeDelays([node: value])
         }
+        await self.refreshProxyGroups()
     }
 
-    private func applyMeasuredNodeDelays(_ delays: [String: Int]) {
-        guard !delays.isEmpty else { return }
-
-        var samples = self.proxyDelaySamples
-        for (name, delay) in delays {
-            var series = samples[name] ?? []
-            series.append(delay)
-            if series.count > ProxyDelayHistory.limit {
-                series = Array(series.suffix(ProxyDelayHistory.limit))
-            }
-            samples[name] = series
-        }
-        self.proxyDelaySamples = samples
+    private func healthcheckURL(for group: ProxyGroup?) -> String {
+        group?.testUrl ?? self.defaultHealthcheckURL
     }
 
     func delayText(group: String, node: String, fallbackToGroupHistory: Bool = false) -> String {
@@ -215,36 +209,11 @@ extension AppViewModel {
     }
 
     func delaySamples(group: String, node: String, fallbackToGroupHistory: Bool = false) -> [Int] {
-        for name in self.proxySelectionChain(startingAt: node).reversed() {
-            if let samples = self.proxyDelaySamples[name], !samples.isEmpty {
-                return samples
-            }
+        let testURL = self.healthcheckURL(for: self.proxyGroups.first { $0.name == group })
+        if let samples = self.proxyDelaySamples[node]?[testURL], !samples.isEmpty {
+            return samples
         }
-        if fallbackToGroupHistory {
-            for name in self.proxySelectionChain(startingAt: group).reversed() {
-                if let samples = self.proxyDelaySamples[name], !samples.isEmpty {
-                    return samples
-                }
-            }
-        }
-        return []
-    }
-
-    private func proxySelectionChain(startingAt start: String) -> [String] {
-        var chain: [String] = []
-        var current = start
-        var seen = Set<String>()
-        while seen.insert(current).inserted {
-            chain.append(current)
-            guard let nested = self.proxyGroups.first(where: { $0.name == current }),
-                  !nested.all.isEmpty,
-                  let next = nested.now?.trimmedNonEmpty
-            else {
-                break
-            }
-            current = next
-        }
-        return chain
+        return fallbackToGroupHistory ? self.proxyDelaySamples[group]?[testURL] ?? [] : []
     }
 
     func controllerHost() -> String {

@@ -39,32 +39,3 @@ struct LogLine: Codable, Equatable {
     let type: String?
     let payload: String?
 }
-
-struct DelayMeasurement: Decodable, Equatable {
-    let value: Int?
-
-    private enum CodingKeys: String, CodingKey {
-        case delay
-    }
-
-    init(from decoder: Decoder) throws {
-        if let container = try? decoder.container(keyedBy: CodingKeys.self),
-           let value = try container.decodeIfPresent(Int.self, forKey: .delay)
-        {
-            self.value = value
-            return
-        }
-
-        let container = try decoder.singleValueContainer()
-        self.value = try? container.decode([String: Int].self).values.first
-    }
-}
-
-struct GroupDelayMeasurement: Decodable, Equatable {
-    let values: [String: Int]
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        self.values = (try? container.decode([String: Int].self)) ?? [:]
-    }
-}
