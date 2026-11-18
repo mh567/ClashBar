@@ -67,8 +67,11 @@ extension MenuBarRootView {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .layoutPriority(1)
 
-                self.footerVersionInfo
-                    .fixedSize(horizontal: true, vertical: false)
+                HStack(spacing: T.space4) {
+                    self.footerVersionInfo
+                    self.footerAppUpdateButton
+                }
+                .fixedSize(horizontal: true, vertical: false)
             }
             .menuRowPadding(vertical: T.space2)
             .background(self.footerSurfaceBackground)
@@ -200,40 +203,61 @@ extension MenuBarRootView {
         }
     }
 
+    var footerAppUpdateButton: some View {
+        let checking = self.appViewModel.isLatestAppReleaseCheckInFlight
+        let installing = self.appViewModel.isInstallingAppUpdate
+        let update = self.appViewModel.availableAppUpdate
+        let title = if installing {
+            tr("ui.footer.app_update.installing")
+        } else if checking {
+            tr("ui.footer.app_update.checking")
+        } else if let update {
+            tr("ui.footer.app_update.install", update.displayVersion)
+        } else {
+            tr("ui.footer.app_update.check")
+        }
+
+        return Button {
+            Task {
+                if update != nil {
+                    self.appUpdateCheckMessageKey = await self.appViewModel.installAvailableAppUpdate()
+                } else if let succeeded = await self.appViewModel.refreshLatestAppRelease() {
+                    if !succeeded {
+                        self.appUpdateCheckMessageKey = "ui.footer.app_update.failed"
+                    } else if self.appViewModel.availableAppUpdate == nil {
+                        self.appUpdateCheckMessageKey = "ui.footer.app_update.latest"
+                    }
+                }
+            }
+        } label: {
+            self.footerVersionBadge(text: title, symbol: nil, tint: self.nativeAccent, emphasized: update != nil)
+        }
+        .buttonStyle(.plain)
+        .disabled(checking || installing)
+        .alert(
+            self.appUpdateCheckMessageKey.map { tr($0) } ?? "",
+            isPresented: Binding(
+                get: { self.appUpdateCheckMessageKey != nil },
+                set: { if !$0 { self.appUpdateCheckMessageKey = nil } })) {
+            Button(tr("ui.action.ok"), role: .cancel) {}
+        }
+    }
+
     @ViewBuilder
     var footerVersionInfo: some View {
-        if let update = self.appViewModel.availableAppUpdate {
-            Link(destination: update.releaseURL) {
-                self.footerVersionBadge(
-                    text: tr("ui.footer.version", update.displayVersion),
-                    symbol: "arrow.down.circle.fill",
-                    tint: self.nativeAccent.opacity(T.Opacity.solid),
-                    emphasized: true)
-            }
-            .buttonStyle(.plain)
-            .help(tr("ui.footer.version_update_help", update.displayVersion))
-            .accessibilityLabel(tr(
-                "ui.footer.version_update_accessibility",
-                self.appViewModel.currentAppVersionText,
-                update.displayVersion))
-        } else {
-            if let releaseIndexURL = self.appViewModel.appReleaseIndexURL {
-                Link(destination: releaseIndexURL) {
-                    self.footerVersionBadge(
-                        text: tr("ui.footer.version", self.appViewModel.currentAppVersionText),
-                        symbol: nil,
-                        tint: self.nativeSecondaryLabel,
-                        emphasized: false)
-                }
+        let version = tr("ui.footer.version", self.appViewModel.currentAppVersionText)
+        let badge = self.footerVersionBadge(
+            text: version,
+            symbol: nil,
+            tint: self.nativeSecondaryLabel,
+            emphasized: false)
+
+        if let url = self.appViewModel.availableAppUpdate?.releaseURL ?? self.appViewModel.appReleaseIndexURL {
+            Link(destination: url) { badge }
                 .buttonStyle(.plain)
-                .help(tr("ui.footer.version", self.appViewModel.currentAppVersionText))
-            } else {
-                self.footerVersionBadge(
-                    text: tr("ui.footer.version", self.appViewModel.currentAppVersionText),
-                    symbol: nil,
-                    tint: self.nativeSecondaryLabel,
-                    emphasized: false)
-            }
+                .help(tr("ui.footer.version_releases_help"))
+        } else {
+            badge
         }
     }
 

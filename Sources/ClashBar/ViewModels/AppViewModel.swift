@@ -198,6 +198,8 @@ final class AppViewModel: ObservableObject {
     @Published var launchAtLoginEnabled: Bool = false
     @Published var launchAtLoginErrorMessage: String?
     @Published var latestAppReleaseInfo: AppReleaseInfo?
+    @Published var isLatestAppReleaseCheckInFlight = false
+    @Published var isInstallingAppUpdate = false
     @Published private(set) var menuBarDisplaySnapshot = MenuBarDisplay(
         mode: .iconOnly,
         symbolName: "bolt.slash.circle",
@@ -399,7 +401,6 @@ final class AppViewModel: ObservableObject {
     var activatedTabRefreshGeneration: Int = 0
     var configFileSignatureSnapshot: [String: String] = [:]
     var pendingConfigChangeRestart = false
-    var isLatestAppReleaseCheckInFlight = false
 
     let defaults = UserDefaults.standard
     @AppStorage("clashbar.auto.start.core") var autoStartCore: Bool = false

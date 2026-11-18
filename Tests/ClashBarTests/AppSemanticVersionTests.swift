@@ -2,6 +2,28 @@ import XCTest
 @testable import ClashBar
 
 final class AppSemanticVersionTests: XCTestCase {
+    func testClientUpdateSelectsOnlyMatchingForkAssetWithDigest() throws {
+        let digest = String(repeating: "a", count: 64)
+        let base = "https://github.com/mh567/ClashBar/releases/download/v1.2.3"
+        let release = try JSONDecoder().decode(AppReleaseInfo.self, from: Data("""
+        {
+          "tag_name": "v1.2.3", "html_url": "\(base)", "draft": false, "prerelease": false,
+          "assets": [
+            {"name": "ClashBar-1.2.3-apple-silicon.dmg", "digest": "sha256:\(digest)",
+             "browser_download_url": "\(base)/ClashBar-1.2.3-apple-silicon.dmg"},
+            {"name": "ClashBar-1.2.3-apple-silicon-no-core.dmg",
+             "browser_download_url": "\(base)/ClashBar-1.2.3-apple-silicon-no-core.dmg"},
+            {"name": "ClashBar-1.2.3-intel.dmg", "digest": "sha256:\(digest)",
+             "browser_download_url": "https://github.com/Sitoi/ClashBar/releases/download/v1.2.3/ClashBar-1.2.3-intel.dmg"}
+          ]
+        }
+        """.utf8))
+
+        XCTAssertEqual(release.installableAsset(architecture: "apple-silicon", bundlesCore: true)?.sha256, digest)
+        XCTAssertNil(release.installableAsset(architecture: "apple-silicon", bundlesCore: false))
+        XCTAssertNil(release.installableAsset(architecture: "intel", bundlesCore: true))
+    }
+
     func testParsesPrefixedAndBareVersions() {
         XCTAssertEqual(AppSemanticVersion("v1.19.31")?.displayString, "1.19.31")
         XCTAssertEqual(AppSemanticVersion("1.19.31")?.displayString, "1.19.31")

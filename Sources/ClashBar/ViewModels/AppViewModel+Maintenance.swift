@@ -254,8 +254,27 @@ extension AppViewModel {
         AppReleaseSource.releasesPageURL
     }
 
-    func refreshLatestAppRelease() async {
-        guard !self.isLatestAppReleaseCheckInFlight else { return }
+    func installAvailableAppUpdate() async -> String? {
+        guard !self.isInstallingAppUpdate, let update = self.availableAppUpdate else { return nil }
+
+        self.isInstallingAppUpdate = true
+        defer { self.isInstallingAppUpdate = false }
+        do {
+            try await AppUpdateInstaller.install(update, bundlesCore: self.bundlesMihomoCore)
+            await self.quitApp()
+        } catch AppUpdateInstaller.Failure.incompatibleAsset {
+            return "ui.footer.app_update.no_asset"
+        } catch AppUpdateInstaller.Failure.nonWritableInstallation {
+            return "ui.footer.app_update.install_location"
+        } catch {
+            return "ui.footer.app_update.install_failed"
+        }
+        return nil
+    }
+
+    @discardableResult
+    func refreshLatestAppRelease() async -> Bool? {
+        guard !self.isLatestAppReleaseCheckInFlight else { return nil }
 
         self.isLatestAppReleaseCheckInFlight = true
         defer {
@@ -264,11 +283,13 @@ extension AppViewModel {
 
         do {
             let release = try await AppReleaseService.fetchLatestRelease(currentVersion: self.currentAppVersionText)
-            guard !Task.isCancelled else { return }
-            guard self.latestAppReleaseInfo != release else { return }
-            self.latestAppReleaseInfo = release
+            guard !Task.isCancelled else { return nil }
+            if self.latestAppReleaseInfo != release {
+                self.latestAppReleaseInfo = release
+            }
+            return true
         } catch {
-            guard !Task.isCancelled else { return }
+            return Task.isCancelled ? nil : false
         }
     }
 }
