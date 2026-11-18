@@ -8,6 +8,15 @@ struct AppReleaseInfo: Decodable, Equatable {
     let isPrerelease: Bool
     private let assets: [Asset]?
 
+    init(tagName: String, releaseURL: URL, asset: Asset? = nil) {
+        self.tagName = tagName
+        self.name = nil
+        self.releaseURL = releaseURL
+        self.isDraft = false
+        self.isPrerelease = false
+        self.assets = asset.map { [$0] }
+    }
+
     private enum CodingKeys: String, CodingKey {
         case tagName = "tag_name"
         case name
@@ -38,13 +47,19 @@ struct AppReleaseInfo: Decodable, Equatable {
     }
 
     func installableAsset(architecture: String, bundlesCore: Bool) -> Asset? {
+        guard let url = Self.expectedAssetURL(tagName: self.tagName, architecture: architecture, bundlesCore: bundlesCore)
+        else { return nil }
+        return self.assets?.first { $0.name == url.lastPathComponent && $0.downloadURL == url && $0.sha256 != nil }
+    }
+
+    static func expectedAssetURL(tagName: String, architecture: String, bundlesCore: Bool) -> URL? {
         let suffix = bundlesCore ? architecture : "\(architecture)-no-core"
-        let name = "ClashBar-\(self.displayVersion)-\(suffix).dmg"
-        let expectedURL = AppReleaseSource.releasesPageURL?
+        let version = AppSemanticVersion.normalizedDisplayVersion(from: tagName)
+        let name = "ClashBar-\(version)-\(suffix).dmg"
+        return AppReleaseSource.releasesPageURL?
             .appendingPathComponent("download")
-            .appendingPathComponent(self.tagName)
+            .appendingPathComponent(tagName)
             .appendingPathComponent(name)
-        return self.assets?.first { $0.name == name && $0.downloadURL == expectedURL && $0.sha256 != nil }
     }
 
     var displayVersion: String {

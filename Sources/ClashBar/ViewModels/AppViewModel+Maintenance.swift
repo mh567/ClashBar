@@ -282,7 +282,10 @@ extension AppViewModel {
         }
 
         do {
-            let release = try await AppReleaseService.fetchLatestRelease(currentVersion: self.currentAppVersionText)
+            let release = try await AppReleaseService.fetchLatestRelease(
+                currentVersion: self.currentAppVersionText,
+                architecture: AppUpdateInstaller.architecture,
+                bundlesCore: self.bundlesMihomoCore)
             guard !Task.isCancelled else { return nil }
             if self.latestAppReleaseInfo != release {
                 self.latestAppReleaseInfo = release

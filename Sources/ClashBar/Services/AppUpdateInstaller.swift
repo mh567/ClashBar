@@ -12,13 +12,16 @@ enum AppUpdateInstaller {
         case replacement
     }
 
-    static func asset(for release: AppReleaseInfo, bundlesCore: Bool) -> AppReleaseInfo.Asset? {
+    static var architecture: String {
         #if arch(arm64)
-            let architecture = "apple-silicon"
+            "apple-silicon"
         #else
-            let architecture = "intel"
+            "intel"
         #endif
-        return release.installableAsset(architecture: architecture, bundlesCore: bundlesCore)
+    }
+
+    static func asset(for release: AppReleaseInfo, bundlesCore: Bool) -> AppReleaseInfo.Asset? {
+        release.installableAsset(architecture: self.architecture, bundlesCore: bundlesCore)
     }
 
     @concurrent

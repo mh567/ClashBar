@@ -1,3 +1,17 @@
+## v1.1.1
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.1-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 修复 GitHub API 限流时客户端检测更新失败的问题。
+
+### 📝 更新日志 (Changelog)
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **客户端检测更新**：GitHub API 限流时，改从同一仓库的发布页获取版本和校验文件，安装前继续验证安装包的 SHA-256。
+
+---
+
 ## v1.1.0
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.0-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
