@@ -56,6 +56,7 @@ struct MenuBarRootView: TranslatingView {
     @Namespace var segmentedSelectionNamespace
 
     @State var appUpdateCheckMessageKey: String?
+    @State var pendingAppUpdateVersion: String?
     @State var switchingMode: CoreMode?
     @State var isSwitchingMachine = false
     @State var showRemoteMachineManager = false

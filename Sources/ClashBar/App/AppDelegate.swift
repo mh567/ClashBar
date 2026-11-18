@@ -23,6 +23,7 @@ final class ClashBarAppDelegate: NSObject, NSApplicationDelegate {
         self.appViewModel.start()
         self.statusItemController = StatusItemController(appViewModel: self.appViewModel)
         self.appViewModel.presentInitialNoCoreSetupGuideIfNeeded()
+        self.appViewModel.consumeAppUpdateRelaunchOutcomeIfNeeded()
 
         DispatchQueue.main.async { [weak self] in
             self?.suppressNonPanelWindows()
@@ -48,6 +49,10 @@ final class ClashBarAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidBecomeActive(_ notification: Notification) {
         self.suppressNonPanelWindows()
         self.appViewModel.handleApplicationDidBecomeActive()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        self.appViewModel.applicationShouldTerminate()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

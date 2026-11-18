@@ -200,6 +200,7 @@ final class AppViewModel: ObservableObject {
     @Published var latestAppReleaseInfo: AppReleaseInfo?
     @Published var isLatestAppReleaseCheckInFlight = false
     @Published var isInstallingAppUpdate = false
+    @Published var appUpdateInstallPhase: AppUpdateInstallPhase?
     @Published private(set) var menuBarDisplaySnapshot = MenuBarDisplay(
         mode: .iconOnly,
         symbolName: "bolt.slash.circle",

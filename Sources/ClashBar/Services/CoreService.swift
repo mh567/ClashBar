@@ -182,6 +182,9 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
     private let lifecycleQueue: DispatchQueue
     private let validationQueue: DispatchQueue
     private let configValidationTimeout: TimeInterval
+    private let resolutionLock = NSLock()
+    private var probedCoreVersions: [String: ProbedCoreVersion] = [:]
+    private var loggedManagedCoreDecision = false
 
     var onLog: ((String) -> Void)?
     var onTermination: ((Int32) -> Void)?
@@ -510,40 +513,253 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
         max(1, Int(self.configValidationTimeout.rounded(.awayFromZero)))
     }
 
+    private struct BundledCoreCandidate {
+        let path: String
+        let isCompressed: Bool
+        let version: AppSemanticVersion?
+    }
+
+    private struct ProbedCoreVersion {
+        let size: UInt64
+        let modifiedAt: Date?
+        let version: AppSemanticVersion?
+    }
+
     private func resolveMihomoBinary() throws -> String {
+        try self.resolutionLock.withLock {
+            try self.resolveMihomoBinaryLocked()
+        }
+    }
+
+    /// Newest core wins: a locally upgraded managed core is never downgraded by
+    /// an app update that still ships an older payload, and a bundled payload
+    /// newer than the managed copy replaces it.
+    private func resolveMihomoBinaryLocked() throws -> String {
         try self.workingDirectoryManager.bootstrapDirectories(fileManager: self.fileManager)
 
         let managedBinaryPath = self.workingDirectoryManager.managedMihomoBinaryURL.path
-
-        if self.fileManager.fileExists(atPath: managedBinaryPath) {
+        let managedExists = self.fileManager.fileExists(atPath: managedBinaryPath)
+        if managedExists {
             try self.ensureExecutableIfNeeded(at: managedBinaryPath)
-            if self.fileManager.isExecutableFile(atPath: managedBinaryPath) {
-                try self.validateBinarySecurity(at: managedBinaryPath)
+            try self.validateBinarySecurity(at: managedBinaryPath)
+        }
+
+        guard let bundled = try self.bundledCoreCandidate() else {
+            guard managedExists, self.fileManager.isExecutableFile(atPath: managedBinaryPath) else {
+                throw MihomoBinaryResolutionError.binaryNotFound(
+                    expectedDirectory: self.workingDirectoryManager.coreDirectoryURL.path)
+            }
+            return managedBinaryPath
+        }
+
+        guard managedExists else {
+            return try self.installBundledCore(bundled, managedPath: managedBinaryPath)
+        }
+
+        // Never swap the binary a live mihomo process is running from.
+        guard !self.isRunning else { return managedBinaryPath }
+
+        let managedVersion = self.probedVersion(at: managedBinaryPath)
+        // An unreadable bundled version cannot prove it is newer, so it never
+        // replaces the managed core.
+        let preferBundled = bundled.version.map {
+            MihomoCoreVersion.shouldPreferBundled(managed: managedVersion, bundled: $0)
+        } ?? false
+        if preferBundled {
+            do {
+                return try self.installBundledCore(bundled, managedPath: managedBinaryPath)
+            } catch {
+                self.onLog?(
+                    "[mihomo binary] failed to install bundled core, keeping managed core: "
+                        + error.localizedDescription)
                 return managedBinaryPath
             }
         }
 
+        guard !self.loggedManagedCoreDecision else { return managedBinaryPath }
+        self.loggedManagedCoreDecision = true
+        let managedText = managedVersion.map { "v\($0.displayString)" } ?? "unknown"
+        let bundledText = bundled.version.map { "v\($0.displayString)" } ?? "unknown"
+        self.onLog?(
+            "[mihomo binary] kept managed core \(managedText) (bundled payload is \(bundledText))")
+        return managedBinaryPath
+    }
+
+    private func bundledCoreCandidate() throws -> BundledCoreCandidate? {
         if let bundledBinaryPath = self.firstBundledExecutableBinaryPath() {
             try self.validateBinarySecurity(at: bundledBinaryPath)
-            let migratedBinaryPath = try self.copyBundledBinaryToManagedCore(
-                bundledPath: bundledBinaryPath,
-                managedPath: managedBinaryPath)
-            try self.validateBinarySecurity(at: migratedBinaryPath)
-            return migratedBinaryPath
+            return BundledCoreCandidate(
+                path: bundledBinaryPath,
+                isCompressed: false,
+                version: self.probedVersion(at: bundledBinaryPath))
         }
 
-        guard let bundledCompressedBinaryPath = self.firstBundledCompressedBinaryPath() else {
-            throw MihomoBinaryResolutionError.binaryNotFound(
-                expectedDirectory: self.workingDirectoryManager.coreDirectoryURL.path)
+        if let bundledCompressedBinaryPath = self.firstBundledCompressedBinaryPath() {
+            try self.validateBinarySecurity(at: bundledCompressedBinaryPath)
+            return BundledCoreCandidate(
+                path: bundledCompressedBinaryPath,
+                isCompressed: true,
+                version: self.bundledCompressedCoreVersion(bundledCompressedBinaryPath))
         }
 
-        try self.validateBinarySecurity(at: bundledCompressedBinaryPath)
-        let migratedBinaryPath = try self.decompressBundledBinaryToManagedCore(
-            compressedPath: bundledCompressedBinaryPath,
-            managedPath: managedBinaryPath)
-        try self.validateBinarySecurity(at: migratedBinaryPath)
-        return migratedBinaryPath
+        return nil
     }
+
+    private func bundledCompressedCoreVersion(_ compressedPath: String) -> AppSemanticVersion? {
+        if let versionURL = self.bundledVersionFileURL(near: compressedPath),
+           let version = MihomoCoreVersion.readVersionFile(at: versionURL)
+        {
+            return version
+        }
+        return self.probedVersion(fromCompressedBinaryAt: compressedPath)
+    }
+
+    private func bundledVersionFileURL(near path: String) -> URL? {
+        let sibling = URL(fileURLWithPath: path)
+            .deletingLastPathComponent()
+            .appendingPathComponent(MihomoCoreVersion.bundledVersionFileName, isDirectory: false)
+        if self.fileManager.fileExists(atPath: sibling.path) {
+            return sibling
+        }
+
+        let relativeLayouts = [
+            "bin/\(MihomoCoreVersion.bundledVersionFileName)",
+            "Resources/bin/\(MihomoCoreVersion.bundledVersionFileName)",
+            MihomoCoreVersion.bundledVersionFileName,
+        ]
+        for root in AppResourceBundleLocator.candidateResourceRoots() {
+            for relative in relativeLayouts {
+                let candidate = root.appendingPathComponent(relative, isDirectory: false)
+                if self.fileManager.fileExists(atPath: candidate.path) {
+                    return candidate
+                }
+            }
+        }
+        return nil
+    }
+
+    private func probedVersion(at path: String) -> AppSemanticVersion? {
+        let attributes = try? self.fileManager.attributesOfItem(atPath: path)
+        let size = (attributes?[.size] as? NSNumber)?.uint64Value
+        let modifiedAt = attributes?[.modificationDate] as? Date
+        if let size, let cached = self.probedCoreVersions[path],
+           cached.size == size, cached.modifiedAt == modifiedAt
+        {
+            return cached.version
+        }
+
+        let version = MihomoCoreVersion.probe(at: path)
+        if let size {
+            self.probedCoreVersions[path] = ProbedCoreVersion(
+                size: size, modifiedAt: modifiedAt, version: version)
+        }
+        return version
+    }
+
+    private func probedVersion(fromCompressedBinaryAt compressedPath: String) -> AppSemanticVersion? {
+        let attributes = try? self.fileManager.attributesOfItem(atPath: compressedPath)
+        let size = (attributes?[.size] as? NSNumber)?.uint64Value
+        let modifiedAt = attributes?[.modificationDate] as? Date
+        if let size, let cached = self.probedCoreVersions[compressedPath],
+           cached.size == size, cached.modifiedAt == modifiedAt
+        {
+            return cached.version
+        }
+
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("clashbar-core-version-\(UUID().uuidString)", isDirectory: true)
+        defer { try? self.fileManager.removeItem(at: directory) }
+        guard (try? self.fileManager.createDirectory(
+            at: directory, withIntermediateDirectories: false)) != nil
+        else { return nil }
+
+        let decompressedPath = directory.appendingPathComponent("mihomo", isDirectory: false).path
+        guard (try? self.gunzip(compressedPath, to: decompressedPath)) != nil else { return nil }
+
+        let version = MihomoCoreVersion.probe(at: decompressedPath)
+        if let size {
+            self.probedCoreVersions[compressedPath] = ProbedCoreVersion(
+                size: size, modifiedAt: modifiedAt, version: version)
+        }
+        return version
+    }
+
+    private func installBundledCore(_ candidate: BundledCoreCandidate, managedPath: String) throws -> String {
+        let stagingPath = managedPath + ".staging-\(UUID().uuidString)"
+        defer { try? self.fileManager.removeItem(atPath: stagingPath) }
+
+        if candidate.isCompressed {
+            try self.gunzip(candidate.path, to: stagingPath)
+        } else {
+            if self.fileManager.fileExists(atPath: stagingPath) {
+                try self.fileManager.removeItem(atPath: stagingPath)
+            }
+            try self.fileManager.copyItem(atPath: candidate.path, toPath: stagingPath)
+        }
+
+        try self.ensureExecutableIfNeeded(at: stagingPath)
+        try self.validateBinarySecurity(at: stagingPath)
+
+        guard Darwin.rename(stagingPath, managedPath) == 0 else {
+            throw NSError(
+                domain: "ClashBar.Core",
+                code: 500,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "failed to replace mihomo binary at \(managedPath) (errno \(errno))",
+                ])
+        }
+
+        self.probedCoreVersions.removeValue(forKey: managedPath)
+        let versionText = self.probedVersion(at: managedPath)?.displayString
+            ?? candidate.version?.displayString
+            ?? "unknown"
+        self.onLog?("[mihomo binary] installed bundled core v\(versionText) to \(managedPath)")
+        return managedPath
+    }
+
+    private func gunzip(_ compressedPath: String, to outputPath: String) throws {
+        self.fileManager.createFile(atPath: outputPath, contents: nil)
+        let outputHandle = try FileHandle(forWritingTo: URL(fileURLWithPath: outputPath))
+        let errorPipe = Pipe()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/gunzip")
+        process.arguments = ["-c", compressedPath]
+        process.standardOutput = outputHandle
+        process.standardError = errorPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            try outputHandle.close()
+
+            guard process.terminationStatus == 0 else {
+                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                let errorText = String(data: errorData, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "unknown error"
+                throw NSError(
+                    domain: "ClashBar.Core",
+                    code: 500,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "failed to decompress bundled mihomo binary from \(compressedPath): \(errorText)",
+                    ])
+            }
+        } catch {
+            try? outputHandle.close()
+            if let error = error as NSError?, error.domain == "ClashBar.Core" {
+                throw error
+            }
+            throw NSError(
+                domain: "ClashBar.Core",
+                code: 500,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "failed to migrate compressed mihomo binary from \(compressedPath): \(error.localizedDescription)",
+                ])
+        }
+    }
+
 
     private func firstBundledExecutableBinaryPath() -> String? {
         for candidate in self.bundledBinaryCandidates() where self.fileManager.isExecutableFile(atPath: candidate) {
@@ -582,85 +798,6 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
             }
         }
         return deduplicated
-    }
-
-    private func copyBundledBinaryToManagedCore(bundledPath: String, managedPath: String) throws -> String {
-        if self.fileManager.fileExists(atPath: managedPath) {
-            try self.fileManager.removeItem(atPath: managedPath)
-        }
-
-        do {
-            try self.fileManager.copyItem(atPath: bundledPath, toPath: managedPath)
-            self.onLog?("[mihomo binary] copied bundled core to \(managedPath)")
-            try self.ensureExecutableIfNeeded(at: managedPath)
-            return managedPath
-        } catch {
-            throw NSError(
-                domain: "ClashBar.Core",
-                code: 500,
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "failed to migrate mihomo binary to \(managedPath): \(error.localizedDescription)",
-                ])
-        }
-    }
-
-    private func decompressBundledBinaryToManagedCore(compressedPath: String, managedPath: String) throws -> String {
-        let temporaryPath = managedPath + ".tmp"
-        if self.fileManager.fileExists(atPath: temporaryPath) {
-            try self.fileManager.removeItem(atPath: temporaryPath)
-        }
-        if self.fileManager.fileExists(atPath: managedPath) {
-            try self.fileManager.removeItem(atPath: managedPath)
-        }
-
-        self.fileManager.createFile(atPath: temporaryPath, contents: nil)
-        let outputURL = URL(fileURLWithPath: temporaryPath)
-        let outputHandle = try FileHandle(forWritingTo: outputURL)
-        let errorPipe = Pipe()
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/gunzip")
-        process.arguments = ["-c", compressedPath]
-        process.standardOutput = outputHandle
-        process.standardError = errorPipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-            try outputHandle.close()
-
-            guard process.terminationStatus == 0 else {
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                let errorText = String(data: errorData, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "unknown error"
-                try? self.fileManager.removeItem(atPath: temporaryPath)
-                throw NSError(
-                    domain: "ClashBar.Core",
-                    code: 500,
-                    userInfo: [
-                        NSLocalizedDescriptionKey:
-                            "failed to decompress bundled mihomo binary from \(compressedPath): \(errorText)",
-                    ])
-            }
-
-            try self.fileManager.moveItem(atPath: temporaryPath, toPath: managedPath)
-            self.onLog?("[mihomo binary] decompressed bundled core to \(managedPath)")
-            try self.ensureExecutableIfNeeded(at: managedPath)
-            return managedPath
-        } catch {
-            try? outputHandle.close()
-            try? self.fileManager.removeItem(atPath: temporaryPath)
-            if let error = error as NSError?, error.domain == "ClashBar.Core" {
-                throw error
-            }
-            throw NSError(
-                domain: "ClashBar.Core",
-                code: 500,
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "failed to migrate compressed mihomo binary to \(managedPath): \(error.localizedDescription)",
-                ])
-        }
     }
 
     private func ensureExecutableIfNeeded(at path: String) throws {

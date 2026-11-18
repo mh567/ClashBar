@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @MainActor
@@ -258,18 +259,101 @@ extension AppViewModel {
         guard !self.isInstallingAppUpdate, let update = self.availableAppUpdate else { return nil }
 
         self.isInstallingAppUpdate = true
-        defer { self.isInstallingAppUpdate = false }
+        self.appUpdateInstallPhase = .downloading(progress: 0)
         do {
-            try await AppUpdateInstaller.install(update, bundlesCore: self.bundlesMihomoCore)
-            await self.quitApp()
+            try await AppUpdateInstaller.install(
+                update,
+                bundlesCore: self.bundlesMihomoCore)
+            { [weak self] phase in
+                Task { @MainActor in
+                    self?.appUpdateInstallPhase = phase
+                }
+            }
         } catch AppUpdateInstaller.Failure.incompatibleAsset {
+            self.finishAppUpdateInstall()
             return "ui.footer.app_update.no_asset"
         } catch AppUpdateInstaller.Failure.nonWritableInstallation {
+            self.finishAppUpdateInstall()
             return "ui.footer.app_update.install_location"
         } catch {
+            self.finishAppUpdateInstall()
             return "ui.footer.app_update.install_failed"
         }
+
+        self.appUpdateInstallPhase = .relaunching
+        // The relaunch helper has already swapped the bundle and is waiting for
+        // this process to exit, so this quit must not be blocked by the
+        // in-flight install guard.
+        self.isInstallingAppUpdate = false
+        await self.quitApp()
+        self.appUpdateInstallPhase = nil
         return nil
+    }
+
+    func applicationShouldTerminate() -> NSApplication.TerminateReply {
+        guard self.isInstallingAppUpdate else { return .terminateNow }
+
+        self.runModalAlert(
+            style: .warning,
+            message: tr("app.update.quit_blocked.title"),
+            informative: tr("app.update.quit_blocked.message"),
+            buttons: [tr("ui.action.ok")])
+        return .terminateCancel
+    }
+
+    func consumeAppUpdateRelaunchOutcomeIfNeeded() {
+        guard let outcome = AppUpdateInstaller.consumeRelaunchOutcome() else { return }
+
+        switch outcome.result {
+        case .succeeded:
+            return
+        case .rolledBack:
+            self.removeFailedUpdateBundleIfNeeded()
+            self.appendLog(
+                level: "error",
+                message: tr(
+                    "log.app_update.relaunch_rolled_back",
+                    outcome.installedVersion,
+                    outcome.previousVersion))
+            self.runModalAlert(
+                style: .critical,
+                message: tr("app.update.relaunch_failed.title"),
+                informative: tr(
+                    "app.update.relaunch_failed.message.rolled_back",
+                    outcome.installedVersion,
+                    outcome.previousVersion),
+                buttons: [tr("ui.action.ok")])
+        case .openFailed:
+            self.removeFailedUpdateBundleIfNeeded()
+            self.appendLog(
+                level: "error",
+                message: tr("log.app_update.relaunch_open_failed", outcome.installedVersion))
+            self.runModalAlert(
+                style: .critical,
+                message: tr("app.update.relaunch_failed.title"),
+                informative: tr("app.update.relaunch_failed.message.open", outcome.installedVersion),
+                buttons: [tr("ui.action.ok")])
+        case .timedOut:
+            self.appendLog(
+                level: "error",
+                message: tr("log.app_update.relaunch_timeout", outcome.installedVersion))
+            self.runModalAlert(
+                style: .warning,
+                message: tr("app.update.relaunch_failed.title"),
+                informative: tr("app.update.relaunch_failed.message.timeout", outcome.installedVersion),
+                buttons: [tr("ui.action.ok")])
+        }
+    }
+
+    private func finishAppUpdateInstall() {
+        self.isInstallingAppUpdate = false
+        self.appUpdateInstallPhase = nil
+    }
+
+    private func removeFailedUpdateBundleIfNeeded() {
+        let leftover = Bundle.main.bundleURL.path + ".failed-update"
+        guard FileManager.default.fileExists(atPath: leftover) else { return }
+        try? FileManager.default.removeItem(atPath: leftover)
     }
 
     @discardableResult

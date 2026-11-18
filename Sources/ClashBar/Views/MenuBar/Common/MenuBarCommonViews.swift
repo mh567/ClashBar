@@ -76,6 +76,14 @@ extension MenuBarRootView {
             .menuRowPadding(vertical: T.space2)
             .background(self.footerSurfaceBackground)
         }
+        .alert(
+            self.appUpdateCheckMessageKey.map { tr($0) } ?? "",
+            isPresented: Binding(
+                get: { self.appUpdateCheckMessageKey != nil },
+                set: { if !$0 { self.appUpdateCheckMessageKey = nil } }))
+        {
+            Button(tr("ui.action.ok"), role: .cancel) {}
+        }
     }
 
     var footerSurfaceBackground: some View {
@@ -205,10 +213,10 @@ extension MenuBarRootView {
 
     var footerAppUpdateButton: some View {
         let checking = self.appViewModel.isLatestAppReleaseCheckInFlight
-        let installing = self.appViewModel.isInstallingAppUpdate
+        let installing = self.appViewModel.isInstallingAppUpdate || self.appViewModel.appUpdateInstallPhase != nil
         let update = self.appViewModel.availableAppUpdate
-        let title = if installing {
-            tr("ui.footer.app_update.installing")
+        let title = if let phase = self.appViewModel.appUpdateInstallPhase {
+            self.footerAppUpdatePhaseTitle(phase)
         } else if checking {
             tr("ui.footer.app_update.checking")
         } else if let update {
@@ -219,8 +227,8 @@ extension MenuBarRootView {
 
         return Button {
             Task {
-                if update != nil {
-                    self.appUpdateCheckMessageKey = await self.appViewModel.installAvailableAppUpdate()
+                if let update {
+                    self.pendingAppUpdateVersion = update.displayVersion
                 } else if let succeeded = await self.appViewModel.refreshLatestAppRelease() {
                     if !succeeded {
                         self.appUpdateCheckMessageKey = "ui.footer.app_update.failed"
@@ -234,12 +242,40 @@ extension MenuBarRootView {
         }
         .buttonStyle(.plain)
         .disabled(checking || installing)
-        .alert(
-            self.appUpdateCheckMessageKey.map { tr($0) } ?? "",
+        .confirmationDialog(
+            tr("app.update.confirm.title"),
             isPresented: Binding(
-                get: { self.appUpdateCheckMessageKey != nil },
-                set: { if !$0 { self.appUpdateCheckMessageKey = nil } })) {
-            Button(tr("ui.action.ok"), role: .cancel) {}
+                get: { self.pendingAppUpdateVersion != nil },
+                set: { if !$0 { self.pendingAppUpdateVersion = nil } }),
+            titleVisibility: .visible)
+        {
+            Button(tr("app.update.confirm.install")) {
+                Task {
+                    self.pendingAppUpdateVersion = nil
+                    if let key = await self.appViewModel.installAvailableAppUpdate() {
+                        self.appUpdateCheckMessageKey = key
+                    }
+                }
+            }
+            Button(tr("ui.action.cancel"), role: .cancel) {}
+        } message: {
+            if let version = self.pendingAppUpdateVersion {
+                Text(tr("app.update.confirm.message", version))
+            }
+        }
+    }
+
+    func footerAppUpdatePhaseTitle(_ phase: AppUpdateInstallPhase) -> String {
+        switch phase {
+        case let .downloading(progress):
+            guard let progress else { return tr("ui.footer.app_update.downloading.unknown") }
+            return tr("ui.footer.app_update.downloading", Int((progress * 100).rounded()))
+        case .verifying:
+            return tr("ui.footer.app_update.verifying")
+        case .installing:
+            return tr("ui.footer.app_update.installing")
+        case .relaunching:
+            return tr("ui.footer.app_update.relaunching")
         }
     }
 

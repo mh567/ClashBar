@@ -218,19 +218,38 @@ if [ "$BUNDLE_MIHOMO_BINARY" = "1" ]; then
     mkdir -p "$(dirname "$MIHOMO_INSTALL_PATH")"
     remove_bundled_mihomo_candidates "mihomo"
     remove_bundled_mihomo_candidates "mihomo.gz"
+    remove_bundled_mihomo_candidates "mihomo.version"
     gzip -c "$MIHOMO_SOURCE_PATH" > "$MIHOMO_INSTALL_PATH"
     chmod 644 "$MIHOMO_INSTALL_PATH"
     echo "Bundled compressed mihomo payload: $MIHOMO_INSTALL_PATH"
+
+    MIHOMO_VERSION_FILE="$(resolve_mihomo_install_path "mihomo.version")"
+    MIHOMO_VERSION_OUTPUT="$("$MIHOMO_SOURCE_PATH" -v 2>&1 || true)"
+    MIHOMO_VERSION="$(printf '%s' "$MIHOMO_VERSION_OUTPUT" | grep -oE 'v[0-9]+([.][0-9]+)+' | head -n 1 || true)"
+    if [ -z "$MIHOMO_VERSION" ]; then
+      MIHOMO_VERSION="$(printf '%s' "$MIHOMO_VERSION_OUTPUT" | grep -oE '[0-9]+[.][0-9]+[.][0-9]+' | head -n 1 || true)"
+    fi
+    if [ -n "$MIHOMO_VERSION" ]; then
+      mkdir -p "$(dirname "$MIHOMO_VERSION_FILE")"
+      printf '%s\n' "$MIHOMO_VERSION" > "$MIHOMO_VERSION_FILE"
+      chmod 644 "$MIHOMO_VERSION_FILE"
+      echo "Bundled mihomo version: $MIHOMO_VERSION"
+    else
+      rm -f "$MIHOMO_VERSION_FILE"
+      echo "Warning: failed to read mihomo version from $MIHOMO_SOURCE_PATH" >&2
+    fi
   elif [ "$REQUIRE_MIHOMO_BINARY" = "1" ]; then
     echo "Missing preprocessed mihomo binary: $PREPROCESSED_MIHOMO_PATH" >&2
     echo "Run ./Scripts/preprocess.sh (or ./Scripts/build.sh app/all) before packaging." >&2
     exit 1
   else
+    remove_bundled_mihomo_candidates "mihomo.version"
     echo "Warning: preprocessed mihomo binary not found, and no bundled mihomo resource was available."
   fi
 else
   remove_bundled_mihomo_candidates "mihomo"
   remove_bundled_mihomo_candidates "mihomo.gz"
+  remove_bundled_mihomo_candidates "mihomo.version"
   echo "Skipped bundling mihomo payload."
 fi
 

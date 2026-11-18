@@ -1,3 +1,27 @@
+## v1.1.2
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.2-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 修复客户端更新后无法自动重启的问题，并确保内核以版本最新者为准。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **更新确认与进度**：安装前先确认，下载时显示百分比，随后依次提示校验、安装与重启阶段。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **内核以最新者为准**：比较本地托管内核与安装包内置内核的版本，保留较高者。本地已升级的内核不会被应用更新降级，安装包内置内核更新时才会替换本地内核。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **更新结果可追踪**：自动重启结果写入状态文件，失败时在下次启动提示并清理残留；内核运行期间不替换其二进制。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **更新后无法自动重启**：重启失败会重试，仍失败则回滚到旧版本并重新打开；等待旧进程退出超时也会记录，不再无提示消失。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **安装更新时仍可退出**：安装期间拦截退出并说明原因，避免替换流程被中断。
+
+---
+
 ## v1.1.1
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.1-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
