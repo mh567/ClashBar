@@ -1,6 +1,6 @@
-## v1.2.0
+## v1.1.4
 
-![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.2.0-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.4-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
 
 > 分组延迟测试改为按配置解析测速地址：子分组与 provider 节点优先使用各自的 `url` 与 health-check 地址，未配置时回退父组和默认地址，`DIRECT` 使用独立的直连探测地址，修复分组默认选中 DIRECT 却显示超时的问题。设置中新增「直连测试地址」。
 
