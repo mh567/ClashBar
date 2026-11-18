@@ -19,6 +19,7 @@
 
 - ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **更新后无法自动重启**：重启失败会重试，仍失败则回滚到旧版本并重新打开；等待旧进程退出超时也会记录，不再无提示消失。
 - ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **安装更新时仍可退出**：安装期间拦截退出并说明原因，避免替换流程被中断。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **内置内核打包位置**：内置 mihomo 与版本文件写入应用实际读取的资源目录，并移除重复打包的未压缩内核，安装包体积回到约 23 MB。
 
 ---
 

@@ -121,11 +121,33 @@ strip_binary_if_enabled() {
   echo "$label stripped: $(format_bytes "$before_bytes") -> $(format_bytes "$after_bytes")"
 }
 
+resource_bundle_dir() {
+  echo "$APP/Contents/Resources/ClashBar_ClashBar.bundle"
+}
+
+# SwiftPM ships the resource bundle as a macOS bundle, so the app resolves
+# bundled files through Bundle.resourceURL, which points at Contents/Resources.
+resource_bundle_resources_dir() {
+  local bundle_dir
+  bundle_dir="$(resource_bundle_dir)"
+  if [ -f "$bundle_dir/Contents/Info.plist" ]; then
+    echo "$bundle_dir/Contents/Resources"
+  else
+    echo "$bundle_dir"
+  fi
+}
+
 resolve_mihomo_install_path() {
   local filename="${1:-mihomo}"
-  local bundle_dir="$APP/Contents/Resources/ClashBar_ClashBar.bundle"
+  local bundle_dir
+  bundle_dir="$(resource_bundle_dir)"
+  local bundle_resources_dir
+  bundle_resources_dir="$(resource_bundle_resources_dir)"
   local resources_dir="$APP/Contents/Resources"
   local candidates=(
+    "$bundle_resources_dir/$filename"
+    "$bundle_resources_dir/bin/$filename"
+    "$bundle_resources_dir/Resources/bin/$filename"
     "$bundle_dir/$filename"
     "$bundle_dir/bin/$filename"
     "$bundle_dir/Resources/bin/$filename"
@@ -149,11 +171,13 @@ resolve_mihomo_install_path() {
     fi
   done
 
-  echo "$bundle_dir/$filename"
+  echo "$bundle_resources_dir/$filename"
 }
 
 remove_bundled_mihomo_candidates() {
   local filename="$1"
+  local bundle_dir
+  bundle_dir="$(resource_bundle_dir)"
   local path=""
 
   while IFS= read -r path; do
@@ -163,8 +187,11 @@ remove_bundled_mihomo_candidates() {
     fi
   done < <(printf '%s\n' \
     "$(resolve_mihomo_install_path "$filename")" \
-    "$APP/Contents/Resources/ClashBar_ClashBar.bundle/bin/$filename" \
-    "$APP/Contents/Resources/ClashBar_ClashBar.bundle/Resources/bin/$filename" \
+    "$bundle_dir/Contents/Resources/$filename" \
+    "$bundle_dir/Contents/Resources/bin/$filename" \
+    "$bundle_dir/Contents/Resources/Resources/bin/$filename" \
+    "$bundle_dir/bin/$filename" \
+    "$bundle_dir/Resources/bin/$filename" \
     "$APP/Contents/Resources/bin/$filename" \
     "$APP/Contents/Resources/Resources/bin/$filename" \
     "$APP/Contents/Resources/$filename" | awk '!seen[$0]++')
