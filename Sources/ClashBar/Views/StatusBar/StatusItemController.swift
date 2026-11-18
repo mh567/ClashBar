@@ -532,9 +532,14 @@ final class StatusItemController: NSObject {
             .leftMouseDown,
             .rightMouseDown,
         ]) { [weak self] _ in
+            // A click on the status item also reaches the global monitor even
+            // though the item belongs to this app. Closing here would run before
+            // the button action and make it reopen the panel, so that click must
+            // be left to `togglePopover`.
+            let clickLocation = NSEvent.mouseLocation
             DispatchQueue.main.async {
                 guard let self else { return }
-                if !self.appViewModel.isPinned {
+                if !self.appViewModel.isPinned, !self.isStatusItemClick(at: clickLocation) {
                     self.closePopover(nil)
                 }
             }
@@ -545,6 +550,12 @@ final class StatusItemController: NSObject {
         guard let globalEventMonitor else { return }
         NSEvent.removeMonitor(globalEventMonitor)
         self.globalEventMonitor = nil
+    }
+
+    private func isStatusItemClick(at screenLocation: NSPoint) -> Bool {
+        guard let button = self.statusItem.button, let window = button.window else { return false }
+        let buttonFrame = window.convertToScreen(button.convert(button.bounds, to: nil))
+        return buttonFrame.contains(screenLocation)
     }
 
     private func observeScreenParameterChanges() {
