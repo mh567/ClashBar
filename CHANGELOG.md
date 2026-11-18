@@ -1,3 +1,21 @@
+## v1.1.0
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.0-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 在「配置管理」中可查看 Mihomo 加载的完整 YAML 及 ClashBar 应用的运行时覆盖值。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **查看运行时配置**：在居中、可缩放且自动换行的只读窗口中，将内核加载的 YAML、启动参数和实时设置合并为一份配置。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **大型配置预览**：在应用进程内生成 YAML，并复用重复值的类型推断结果。
+
+---
+
 ## v1.0.1
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.0.1-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
