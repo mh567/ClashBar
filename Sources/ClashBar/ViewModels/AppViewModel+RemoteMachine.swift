@@ -3,11 +3,17 @@ import Foundation
 @MainActor
 extension AppViewModel {
     func switchToMachineTarget(_ target: MachineTarget) async {
+        guard !self.isConfigMutationBusy else { return }
+        let previous = self.remoteMachineStore.activeTarget
         if case let .remote(machine) = target {
             let status = await self.remoteMachineStore.refreshConnectivity(for: machine)
             guard status.isConnected else { return }
         }
 
+        guard !self.isConfigMutationBusy, self.remoteMachineStore.activeTarget == previous else { return }
+        self.cancelProxyPortsAutoSave()
+        self.editedProxyPorts = [:]
+        self.configReadEpoch = UUID()
         self.remoteMachineStore.selectTarget(target)
 
         self.cancelPolling()
@@ -21,7 +27,9 @@ extension AppViewModel {
         switch target {
         case .local:
             self.appendLog(level: "info", message: self.tr("log.remote.switched_to_local"))
-            if let configPath = await self.resolveSelectedConfigPath() {
+            if let input = self.runtimeConfigInput, input.status == self.processManager.status {
+                self.restoreLoadedController(input)
+            } else if let configPath = await self.resolveSelectedConfigPath() {
                 self.applyExternalControllerFromSelectedConfigFile(configPath: configPath)
             } else {
                 let fallback = "127.0.0.1:9090"
@@ -35,8 +43,6 @@ extension AppViewModel {
 
             if let snapshot = self.loadPersistedEditableSettingsSnapshot() {
                 self.applyEditableSettingsSnapshotToUI(snapshot)
-                self.preserveLocalSettingsOnNextSync = true
-                self.pendingAppLaunchOverlaySettings = snapshot
             }
             self.lastSyncedEditableSettings = nil
 
@@ -50,7 +56,6 @@ extension AppViewModel {
             self.applyExternalUIConfiguration(hasURL: false, name: nil)
             self.ensureAPIClient()
             self.lastSyncedEditableSettings = nil
-            self.preserveLocalSettingsOnNextSync = false
         }
 
         await self.refreshFromAPI(includeSlowCalls: true)
@@ -60,7 +65,6 @@ extension AppViewModel {
         }
 
         if case .local = target {
-            await self.applyPendingAppLaunchSettingsOverlayIfNeeded(syncSystemProxyPort: false)
             self.refreshSSIDStrategyState(requestAuthorizationIfNeeded: self.ssidStrategyEnabled)
             await self.applySSIDStrategyForCurrentSSIDIfNeeded()
         }

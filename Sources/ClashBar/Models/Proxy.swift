@@ -104,6 +104,7 @@ struct ConfigSnapshot: Codable, Equatable {
     }
 
     let allowLan: Bool?
+    let bindAddress: String?
     let mode: String?
     let logLevel: String?
     let ipv6: Bool?
@@ -124,6 +125,7 @@ struct ConfigSnapshot: Codable, Equatable {
 
     private enum CodingKeys: String, CodingKey {
         case allowLan = "allow-lan"
+        case bindAddress = "bind-address"
         case mode
         case logLevel = "log-level"
         case ipv6

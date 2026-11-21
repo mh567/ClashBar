@@ -91,6 +91,16 @@ extension AppViewModel {
         return launchController
     }
 
+    func restoreLoadedController(_ input: RuntimeConfigInput) {
+        self.applyExternalControllerFromConfig(input.controller)
+        if let yaml = input.yaml {
+            self.applyControllerSecretFromConfig(self.parseYAMLScalarValue(forKey: "secret", fromConfigContent: yaml))
+            let url = self.parseYAMLScalarValue(forKey: "external-ui-url", fromConfigContent: yaml)
+            let name = self.parseYAMLScalarValue(forKey: "external-ui-name", fromConfigContent: yaml)
+            self.applyExternalUIConfiguration(hasURL: url.trimmedNonEmpty != nil, name: name)
+        }
+    }
+
     private func parseExternalController(fromConfigAt configPath: String) -> String? {
         guard let raw = try? String(contentsOfFile: configPath, encoding: .utf8) else {
             return nil

@@ -29,7 +29,6 @@ extension AppViewModel {
         self.configDirectoryDebounceTask?.cancel()
         self.configDirectoryDebounceTask = nil
         self.configFileSignatureSnapshot = [:]
-        self.pendingConfigChangeRestart = false
     }
 
     private func scheduleConfigDirectoryRefresh(delayNanoseconds: UInt64 = 350_000_000) {
@@ -51,6 +50,10 @@ extension AppViewModel {
             return (files, signatures)
         }.value
         guard !Task.isCancelled else { return }
+        if self.isConfigMutationBusy {
+            self.scheduleConfigDirectoryRefresh(delayNanoseconds: 500_000_000)
+            return
+        }
 
         let changedFileNames = self.changedConfigFileNames(
             previous: self.configFileSignatureSnapshot,
@@ -58,6 +61,12 @@ extension AppViewModel {
         var selectedConfigChanged = false
         if !changedFileNames.isEmpty {
             self.configService.applyScannedConfigs(scan.0)
+            let renames = self.reconcileConfigFileIdentities()
+            if let previousSelectedPath,
+               let renamed = renames[ConfigOverrides.pathKey(for: URL(fileURLWithPath: previousSelectedPath))]
+            {
+                self.configService.selectConfig(URL(fileURLWithPath: renamed))
+            }
             self.configFileSignatureSnapshot = scan.1
             let nextSelectedPath = self.syncSelectedConfigStateForMonitoring()
             self.syncConfigDisplayState()
@@ -69,25 +78,7 @@ extension AppViewModel {
             selectedConfigChanged = !involvedSelectedFileNames.isDisjoint(with: changedFileNames)
         }
 
-        guard !self.isRemoteTarget else {
-            self.pendingConfigChangeRestart = false
-            return
-        }
-        guard self.pendingConfigChangeRestart || selectedConfigChanged else { return }
-        guard self.isRuntimeRunning else {
-            self.pendingConfigChangeRestart = false
-            return
-        }
-
-        if self.isCoreActionProcessing {
-            if selectedConfigChanged, !self.isTunSyncing {
-                self.pendingConfigChangeRestart = true
-            }
-            self.scheduleConfigDirectoryRefresh(delayNanoseconds: 500_000_000)
-            return
-        }
-
-        self.pendingConfigChangeRestart = false
+        guard !self.isRemoteTarget, selectedConfigChanged, self.isRuntimeRunning else { return }
         self.appendLog(level: "info", message: self.tr("log.config.changed_restart"))
         await self.restartCore(trigger: .configSwitch)
     }

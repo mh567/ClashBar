@@ -114,24 +114,28 @@ struct SystemTabView: TranslatingView {
         }
     }
 
-    func settingsPortFieldRow(_ title: String, symbol: String, text: Binding<String>) -> some View {
+    func settingsPortFieldRow(_ title: String, symbol: String, key: String, text: Binding<String>) -> some View {
         HStack(spacing: T.space8) {
             self.settingsRowLabel(symbol: symbol, title: title)
                 .layoutPriority(1)
 
             Spacer(minLength: 0)
 
-            TextField(self.tr("ui.placeholder.port"), text: text)
+            TextField(self.tr("ui.placeholder.port"), text: Binding(
+                get: { self.appViewModel.editedProxyPorts[key] ?? text.wrappedValue },
+                set: {
+                    self.appViewModel.editedProxyPorts[key] = $0
+                    self.appViewModel.scheduleProxyPortsAutoSaveIfNeeded()
+                }))
                 .textFieldStyle(.roundedBorder)
                 .font(.app(size: T.FontSize.body, weight: .regular))
                 .foregroundStyle(nativePrimaryLabel)
                 .multilineTextAlignment(.trailing)
                 .frame(width: self.settingsPortFieldWidth, alignment: .trailing)
-                .onChange(of: text.wrappedValue) { _ in
-                    self.appViewModel.scheduleProxyPortsAutoSaveIfNeeded()
-                }
                 .onSubmit {
-                    Task { await self.appViewModel.applyProxyPorts(autoSaved: true) }
+                    self.appViewModel.editedProxyPorts[key] =
+                        self.appViewModel.editedProxyPorts[key] ?? text.wrappedValue
+                    Task { await self.appViewModel.applyProxyPorts() }
                 }
         }
     }
@@ -333,12 +337,12 @@ struct SystemTabView: TranslatingView {
 
     var body: some View {
         let isRemote = self.appViewModel.isRemoteTarget
-        let proxyPortFields: [(titleKey: String, symbol: String, text: Binding<String>)] = [
-            ("ui.settings.port.port", "network", $appViewModel.settingsPort),
-            ("ui.settings.port.socks", "wave.3.right", self.$appViewModel.settingsSocksPort),
-            ("ui.settings.port.mixed", "arrow.triangle.merge", self.$appViewModel.settingsMixedPort),
-            ("ui.settings.port.redir", "arrowshape.turn.up.right", self.$appViewModel.settingsRedirPort),
-            ("ui.settings.port.tproxy", "shield.lefthalf.filled", self.$appViewModel.settingsTProxyPort),
+        let proxyPortFields: [(titleKey: String, key: String, symbol: String, text: Binding<String>)] = [
+            ("ui.settings.port.port", "port", "network", $appViewModel.settingsPort),
+            ("ui.settings.port.socks", "socks-port", "wave.3.right", self.$appViewModel.settingsSocksPort),
+            ("ui.settings.port.mixed", "mixed-port", "arrow.triangle.merge", self.$appViewModel.settingsMixedPort),
+            ("ui.settings.port.redir", "redir-port", "arrowshape.turn.up.right", self.$appViewModel.settingsRedirPort),
+            ("ui.settings.port.tproxy", "tproxy-port", "shield.lefthalf.filled", self.$appViewModel.settingsTProxyPort),
         ]
         let localOnlyItems: [(id: String, title: String, symbol: String, isOn: Binding<Bool>)] = [
             (
@@ -557,10 +561,33 @@ struct SystemTabView: TranslatingView {
                         self.settingsPortFieldRow(
                             self.tr(item.titleKey),
                             symbol: item.symbol,
+                            key: item.key,
                             text: item.text)
                     }
                 }
                 .menuRowPadding(vertical: T.space4)
+            }
+
+            if !isRemote {
+                VStack(alignment: .leading, spacing: T.space4) {
+                    self.settingsCardHeader(self.tr("ui.settings.overrides.title"), symbol: "slider.horizontal.3")
+                    if self.appViewModel.activeConfigOverrides.isEmpty {
+                        Text(self.tr("ui.settings.overrides.follow"))
+                            .foregroundStyle(self.nativeSecondaryLabel)
+                            .menuRowPadding(vertical: T.space4)
+                    }
+                    ForEach(self.appViewModel.activeConfigOverrides.keys.sorted(), id: \.self) { key in
+                        HStack {
+                            Text(key).lineLimit(1)
+                            Spacer()
+                            Button(self.tr("ui.settings.overrides.follow")) {
+                                Task { await self.appViewModel.restoreConfigField(key) }
+                            }
+                            .disabled(self.appViewModel.isConfigMutationBusy || !self.appViewModel.isRuntimeRunning)
+                        }
+                        .menuRowPadding(vertical: T.space4)
+                    }
+                }
             }
 
             VStack(spacing: 0) {

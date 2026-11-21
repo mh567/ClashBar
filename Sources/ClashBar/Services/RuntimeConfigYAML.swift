@@ -12,6 +12,74 @@ enum RuntimeConfigYAML {
         }.value
     }
 
+    struct Details: Sendable {
+        let yaml: String
+        let declaredOnly: [String]
+        let runtimeFields: [String]
+        let declarationDifferences: [String: String]
+        let geoAliasConflicts: [String]
+    }
+
+    static func inspect(yaml: String, settings: String, controller: String) async throws -> Details {
+        try await Task.detached(priority: .userInitiated) {
+            let raw = try Yams.compose(yaml: settings)?.mapping ?? .init([])
+            let declarations = try self.expandMergeKeys(Yams.compose(yaml: yaml)?.mapping ?? .init([]))
+            let sourceGeo = try self.expandMergeKeys(declarations["geox-url"]?.mapping ?? .init([]))
+            let apiGeo = raw["geox-url"]?.mapping ?? .init([])
+            let geo = self.normalizeGeoURLKeys(apiGeo)
+            let displayKeys = Set(raw.map { $0.key.string ?? "" }).subtracting(["sniffing", "geox-url"])
+            var runtimeFields = displayKeys.sorted()
+            if raw["sniffing"] != nil { runtimeFields.append("sniffer.enable") }
+            var differences: [String: String] = [:]
+            for key in displayKeys where key != "tun" {
+                if let source = declarations[key]?.scalar?.string, let actual = raw[key]?.scalar?.string,
+                   source.caseInsensitiveCompare(actual) != .orderedSame
+                {
+                    differences[key] = source
+                }
+            }
+            let sourceTun = try self.expandMergeKeys(declarations["tun"]?.mapping ?? .init([]))
+            let runtimeTun = raw["tun"]?.mapping ?? .init([])
+            for (key, value) in runtimeTun {
+                if let name = key.string, let source = sourceTun[key]?.scalar?.string,
+                   let actual = value.scalar?.string, source.caseInsensitiveCompare(actual) != .orderedSame
+                {
+                    differences["tun." + name] = source
+                }
+            }
+            for (key, value) in geo {
+                guard let name = key.string else { continue }
+                let path = "geox-url." + name
+                runtimeFields.append(path)
+                if let declaration = sourceGeo[key]?.string, declaration != value.string {
+                    differences[path] = declaration
+                }
+            }
+            let conflicts = [("geoip", "geo-ip"), ("geosite", "geo-site")].compactMap { key, alias in
+                guard let declared = apiGeo[key]?.string, let alternate = apiGeo[alias]?.string,
+                      declared != alternate
+                else { return nil as String? }
+                return "geox-url." + key
+            }
+            let declaredOnly = declarations.flatMap { entry -> [String] in
+                guard let key = entry.key.string, key != "external-controller" else { return [] }
+                if key == "sniffer", raw["sniffing"] != nil, let sniffer = entry.value.mapping {
+                    return sniffer.compactMap { item in
+                        guard let name = item.key.string, name != "enable" else { return nil }
+                        return "sniffer." + name
+                    }
+                }
+                return raw[key] == nil ? [key] : []
+            }.sorted()
+            return Details(
+                yaml: try self.render(yaml: yaml, settings: settings, controller: controller),
+                declaredOnly: declaredOnly,
+                runtimeFields: runtimeFields.sorted(),
+                declarationDifferences: differences,
+                geoAliasConflicts: conflicts)
+        }.value
+    }
+
     private static func render(yaml: String, settings: String, controller: String) throws -> String {
         guard let liveSettings = try Yams.compose(yaml: settings), var overrides = liveSettings.mapping else {
             throw MergeError.invalidMapping
@@ -20,6 +88,9 @@ enum RuntimeConfigYAML {
         if let sniffing = overrides["sniffing"] {
             overrides["sniffing"] = nil
             overrides["sniffer"] = ["enable": sniffing]
+        }
+        if let geoURL = overrides["geox-url"]?.mapping {
+            overrides["geox-url"] = .mapping(self.normalizeGeoURLKeys(geoURL))
         }
 
         var preparation = Preparation()
@@ -33,6 +104,17 @@ enum RuntimeConfigYAML {
         let merged = try self.overlay(liveMapping, onto: baseMapping)
         return try Yams.serialize(
             node: .mapping(merged), canonical: preparation.needsExplicitTags, width: -1, allowUnicode: true)
+    }
+
+    private static func normalizeGeoURLKeys(_ mapping: Node.Mapping) -> Node.Mapping {
+        var result = mapping
+        for (yamlKey, apiKey) in [("geoip", "geo-ip"), ("geosite", "geo-site")] {
+            if result[yamlKey] == nil {
+                result[yamlKey] = result[apiKey]
+            }
+            result[apiKey] = nil
+        }
+        return result
     }
 
     private static func overlay(_ overrides: Node.Mapping, onto base: Node.Mapping) throws -> Node.Mapping {

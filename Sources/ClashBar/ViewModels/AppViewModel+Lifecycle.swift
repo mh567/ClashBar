@@ -4,7 +4,6 @@ import Foundation
 @MainActor
 extension AppViewModel {
     private struct CoreBootstrapOptions {
-        let overlaySyncingKey: String
         let providerTrigger: ProviderRefreshTrigger
         let refreshProxyGroupsAfterBootstrap: Bool
         let refreshSystemProxyBeforeOverlay: Bool
@@ -19,59 +18,31 @@ extension AppViewModel {
 
     func startCore(trigger: StartTrigger = .manual) async {
         guard !self.isRemoteTarget else { return }
-        guard !isCoreActionProcessing else { return }
+        guard !self.isConfigMutationBusy else { return }
         if trigger == .manual {
             shouldResumeCoreAfterNetworkRecovery = false
         }
-        coreActionState = .starting
-        defer { coreActionState = .idle }
-        var settingsOverlay = currentEditableSettingsSnapshot()
-        settingsOverlay = self.overlayApplyingPendingCoreFeatureRecovery(settingsOverlay)
-        preserveLocalSettingsOnNextSync = true
+        self.coreActionState = .starting
+        self.configReadEpoch = UUID()
+        defer {
+            self.configReadEpoch = UUID()
+            self.coreActionState = .idle
+        }
         do {
-            guard let configPath = await resolveSelectedConfigPath() else {
-                let message = tr("log.start.no_config")
-                self.reportCoreStartFailure(message: message, trigger: trigger, markFailedOnManual: false)
-                return
+            guard let configPath = await self.resolveSelectedConfigPath() else {
+                throw CocoaError(.fileNoSuchFile)
             }
-
-            settingsOverlay = try await prepareTunOverlayForCoreStartup(settingsOverlay)
-
-            guard await self.validateConfigBeforeCoreLaunch(configPath: configPath) else {
-                preserveLocalSettingsOnNextSync = false
-                if trigger == .auto {
-                    let fileName = URL(fileURLWithPath: configPath).lastPathComponent
-                    startupErrorMessage = tr("app.config.validation_failed.startup", fileName)
-                    statusText = "Stopped"
-                    apiStatus = .unknown
-                } else {
-                    statusText = "Failed"
-                    apiStatus = .failed
-                }
-                return
-            }
-
-            let launchController = applyExternalControllerFromSelectedConfigFile(configPath: configPath)
-            statusText = "Starting"
-            let launchYAML = RuntimeConfigInput.readYAML(at: configPath)
-            let launchStatus = try await self.processManager.start(configPath: configPath, controller: launchController)
-
-            await self.completeCoreBootstrap(
-                configPath: configPath,
-                launchYAML: launchYAML,
-                launchStatus: launchStatus,
-                launchController: launchController,
-                settingsOverlay: settingsOverlay,
+            _ = try await self.launchSelectedConfig(
+                path: configPath, restarting: false,
                 options: CoreBootstrapOptions(
-                    overlaySyncingKey: "start-overlay",
                     providerTrigger: .start,
                     refreshProxyGroupsAfterBootstrap: false,
                     refreshSystemProxyBeforeOverlay: true,
                     refreshSystemProxyAfterBootstrap: false,
                     autoTestGroupLatencies: true))
         } catch {
-            preserveLocalSettingsOnNextSync = false
-            let message = tr("log.start.failed", self.coreErrorMessage(error))
+            self.configApplicationFailure = self.configApplicationErrorMessage(error)
+            let message = tr("log.start.failed", self.configApplicationFailure ?? "")
             self.reportCoreStartFailure(message: message, trigger: trigger, markFailedOnManual: true)
         }
     }
@@ -94,21 +65,25 @@ extension AppViewModel {
 
     func stopCore(trigger: StopTrigger = .manual) async {
         guard !self.isRemoteTarget else { return }
-        guard !isCoreActionProcessing else { return }
+        guard !self.isConfigMutationBusy else { return }
         if trigger == .manual {
             shouldResumeCoreAfterNetworkRecovery = false
         }
         let recoverySnapshotBeforeStop = self.currentCoreFeatureRecoverySnapshot()
-        coreActionState = .stopping
-        defer { coreActionState = .idle }
+        self.coreActionState = .stopping
+        self.configReadEpoch = UUID()
+        defer {
+            self.configReadEpoch = UUID()
+            self.coreActionState = .idle
+        }
         await self.prepareCoreFeatureRecoveryBeforeCoreTransition(
             fallbackRecovery: recoverySnapshotBeforeStop,
             transitionKind: .stop,
             disableRuntimeTunBeforeStop: trigger == .networkLoss)
-        self.cancelDeferredEditableSettingsOverlaySync()
         cancelProviderRefresh(reason: "stop requested")
         await self.processManager.stop()
         self.runtimeConfigInput = nil
+        self.configApplicationLoaded = false
         cancelPolling()
         statusText = "Stopped"
         apiStatus = .unknown
@@ -116,54 +91,155 @@ extension AppViewModel {
         resetTrafficPresentation()
     }
 
-    func restartCore(trigger: ProviderRefreshTrigger = .restart) async {
-        guard !self.isRemoteTarget else { return }
-        guard !isCoreActionProcessing else { return }
-        coreActionState = .restarting
-        defer { coreActionState = .idle }
-        preserveLocalSettingsOnNextSync = true
-        cancelProviderRefresh(reason: "restart requested")
+    @discardableResult
+    func restartCore(trigger: ProviderRefreshTrigger = .restart) async -> ConfigApplicationOutcome {
+        guard !self.isRemoteTarget, !self.isConfigMutationBusy else { return .skipped }
+        self.coreActionState = .restarting
+        self.configReadEpoch = UUID()
+        defer {
+            self.configReadEpoch = UUID()
+            self.coreActionState = .idle
+        }
+        self.cancelProviderRefresh(reason: "restart requested")
         do {
-            guard let configPath = await resolveSelectedConfigPath() else {
-                self.reportCoreRestartFailure(message: tr("log.start.no_config"))
-                return
+            guard let configPath = await self.resolveSelectedConfigPath() else {
+                throw CocoaError(.fileNoSuchFile)
             }
-
-            guard await self.validateConfigBeforeCoreLaunch(configPath: configPath) else {
-                preserveLocalSettingsOnNextSync = false
-                return
-            }
-
-            let launchController = applyExternalControllerFromSelectedConfigFile(configPath: configPath)
-            let recoverySnapshotBeforeRestart = self.currentCoreFeatureRecoverySnapshot()
-            await self.prepareCoreFeatureRecoveryBeforeCoreTransition(
-                fallbackRecovery: recoverySnapshotBeforeRestart,
-                transitionKind: .restart,
-                disableRuntimeTunBeforeStop: false)
-            let settingsOverlay = self.overlayApplyingPendingCoreFeatureRecovery(currentEditableSettingsSnapshot())
-            let launchYAML = RuntimeConfigInput.readYAML(at: configPath)
-            let launchStatus = try await self.processManager.restart(
-                configPath: configPath, controller: launchController)
-            await self.completeCoreBootstrap(
-                configPath: configPath,
-                launchYAML: launchYAML,
-                launchStatus: launchStatus,
-                launchController: launchController,
-                settingsOverlay: settingsOverlay,
+            return try await self.launchSelectedConfig(
+                path: configPath, restarting: true,
                 options: CoreBootstrapOptions(
-                    overlaySyncingKey: "restart-overlay",
                     providerTrigger: trigger,
                     refreshProxyGroupsAfterBootstrap: true,
                     refreshSystemProxyBeforeOverlay: false,
                     refreshSystemProxyAfterBootstrap: true,
                     autoTestGroupLatencies: false))
         } catch {
-            preserveLocalSettingsOnNextSync = false
-            self.reportCoreRestartFailure(message: tr("log.restart.failed", self.coreErrorMessage(error)))
+            self.configApplicationFailure = self.configApplicationErrorMessage(error)
+            let message = self.tr("log.restart.failed", self.configApplicationFailure ?? "")
+            self.reportCoreRestartFailure(message: message)
+            return .failed
         }
     }
 
+    private func launchSelectedConfig(
+        path: String, restarting: Bool, options: CoreBootstrapOptions
+    ) async throws -> ConfigApplicationOutcome {
+        let target = URL(fileURLWithPath: path)
+        let replacement = self.pendingRemoteConfigReplacements[target.lastPathComponent]
+        defer {
+            if let replacement, self.pendingRemoteConfigReplacements[target.lastPathComponent] == replacement {
+                self.discardRemoteConfigReplacement(for: target, failed: true)
+            }
+        }
+        let oldInput = self.runtimeConfigInput
+        let oldPath = oldInput?.selectedPath ?? path
+        let backup = self.lastLoadedConfigURL(for: oldPath)
+        let recoveryPath = backup.flatMap { url in
+            FileManager.default.fileExists(atPath: url.path) ? url.path : nil
+        }
+        let fallback = recoveryPath ?? (replacement != nil ? path : nil)
+        let currentSelection = self.configService.selectedConfig?.path
+        let candidate = replacement?.file(beside: target).path ?? path
+        let validation = await self.configValidationFailureDetails(configPath: candidate)
+        guard currentSelection == self.configService.selectedConfig?.path else { throw ConfigApplicationError.stale }
+        if let validation {
+            if replacement == nil { self.handleConfigValidationFailure(configPath: path, details: validation) }
+            if let oldInput, self.processManager.status == oldInput.status {
+                self.restoreConfigSelection(oldPath)
+                self.configApplicationFailure = validation
+                return .failed
+            }
+            guard fallback != nil else { throw ConfigApplicationError.unverified }
+        }
+
+        if restarting {
+            await self.prepareCoreFeatureRecoveryBeforeCoreTransition(
+                fallbackRecovery: self.currentCoreFeatureRecoverySnapshot(),
+                transitionKind: .restart,
+                disableRuntimeTunBeforeStop: false)
+        }
+        self.runtimeConfigInput = nil
+        self.configApplicationLoaded = false
+        self.statusText = "Starting"
+
+        do {
+            guard validation == nil else { throw ConfigApplicationError.unverified }
+            try await self.launchConfig(
+                candidate, selectedPath: path, restarting: restarting, replacing: replacement != nil)
+            if let replacement {
+                guard self.configApplicationOutcome == .applied else { throw ConfigApplicationError.unverified }
+                try self.commitRemoteConfigReplacement(replacement, to: target)
+            }
+            await self.completeCoreBootstrap(configPath: path, options: options)
+            return self.configApplicationOutcome
+        } catch {
+            let failure = self.configApplicationErrorMessage(error)
+            guard let fallback else {
+                if replacement != nil, self.processManager.isRunning {
+                    await self.processManager.stop()
+                }
+                throw error
+            }
+            self.restoreConfigSelection(oldPath)
+            try await self.launchConfig(fallback, selectedPath: oldPath, restarting: self.processManager.isRunning)
+            self.configApplicationFailure = self.tr("app.config.apply.previous_restored") + " " + failure
+            await self.completeCoreBootstrap(configPath: oldPath, options: options)
+            return .failed
+        }
+    }
+
+    private func restoreConfigSelection(_ path: String) {
+        let key = ConfigOverrides.pathKey(for: URL(fileURLWithPath: path))
+        guard let config = self.configService.availableConfigs.first(where: { ConfigOverrides.pathKey(for: $0) == key })
+        else { return }
+        self.configService.selectConfig(config)
+        _ = self.syncSelectedConfigSelection(config)
+        self.syncConfigDisplayState()
+    }
+
+    private func launchConfig(
+        _ path: String, selectedPath: String, restarting: Bool, replacing: Bool = false
+    ) async throws {
+        guard let yaml = RuntimeConfigInput.readYAML(at: path) else { throw CocoaError(.fileReadCorruptFile) }
+        let controller = self.applyExternalControllerFromSelectedConfigFile(configPath: path)
+        let status = try await (restarting
+            ? self.processManager.restart(configPath: path, controller: controller)
+            : self.processManager.start(configPath: path, controller: controller))
+        do {
+            guard RuntimeConfigInput.readYAML(at: path) == yaml else { throw ConfigApplicationError.stale }
+            try await self.awaitConfigController(for: status)
+            try await self.acknowledgeLoadedConfig(
+                at: selectedPath, yaml: yaml, status: status, controller: controller,
+                overrides: replacing ? [:] : nil, persistBackup: !replacing)
+        } catch {
+            if self.processManager.status == status {
+                await self.processManager.stop()
+            }
+            throw error
+        }
+    }
+
+    private func awaitConfigController(for status: CoreLifecycleStatus) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(30)
+        while self.processManager.status == status {
+            do {
+                let _: ConfigSnapshot = try await self.clientOrThrow().request(.getConfigs)
+                return
+            } catch {
+                guard clock.now < deadline else { throw error }
+                try await Task.sleep(for: .milliseconds(250))
+            }
+        }
+        throw ConfigApplicationError.stale
+    }
+
     private func reportCoreRestartFailure(message: String) {
+        if !self.processManager.isRunning {
+            self.statusText = "Failed"
+            self.apiStatus = .failed
+            self.cancelPolling()
+        }
         self.appendLog(level: "error", message: message)
         self.presentCoreFailureAlert(
             title: self.tr("app.core.alert.restart_failed.title"),
@@ -172,7 +248,7 @@ extension AppViewModel {
     }
 
     func performPrimaryCoreAction() async {
-        guard !isCoreActionProcessing else { return }
+        guard !self.isConfigMutationBusy else { return }
         if isRuntimeRunning {
             await self.restartCore()
         } else {
@@ -214,7 +290,6 @@ extension AppViewModel {
         self.shouldResumeCoreAfterNetworkRecovery = false
         self.stopNetworkReachabilityMonitoring()
         self.stopConfigDirectoryMonitoring()
-        self.cancelDeferredEditableSettingsOverlaySync()
         self.cancelProviderRefresh(reason: "quit requested")
         self.cancelPolling()
         self.stopRemoteConfigAutoUpdateTask()
@@ -270,16 +345,6 @@ extension AppViewModel {
         return CoreMode(rawValue: raw.lowercased())
     }
 
-    @discardableResult
-    func validateConfigBeforeCoreLaunch(configPath: String) async -> Bool {
-        guard let details = await self.configValidationFailureDetails(configPath: configPath) else {
-            return true
-        }
-
-        self.handleConfigValidationFailure(configPath: configPath, details: details)
-        return false
-    }
-
     func configValidationFailureDetails(configPath: String) async -> String? {
         do {
             try await self.processManager.validateConfig(configPath: configPath)
@@ -301,13 +366,10 @@ extension AppViewModel {
         guard previousPath != nextPath else { return }
         guard processManager.isRunning else { return }
 
-        pendingConfigSwitchOverlaySettings = currentEditableSettingsSnapshot()
-        preserveLocalSettingsOnNextSync = true
         clearProxyPresentation()
         appendLog(level: "info", message: tr("log.config.changed_restart"))
         cancelProviderRefresh(reason: "config switch requested")
         await self.restartCore(trigger: .configSwitch)
-        await applyPendingConfigSwitchSettingsOverlayIfNeeded()
     }
 
     func refreshProxyGroupsAfterRestart() async {
@@ -328,33 +390,13 @@ extension AppViewModel {
         await self.startCore(trigger: .auto)
     }
 
-    private func completeCoreBootstrap(
-        configPath: String,
-        launchYAML: String?,
-        launchStatus: CoreLifecycleStatus,
-        launchController: String,
-        settingsOverlay: EditableSettingsSnapshot,
-        options: CoreBootstrapOptions) async
-    {
+    private func completeCoreBootstrap(configPath: String, options: CoreBootstrapOptions) async {
         statusText = "Running"
         apiStatus = .healthy
         resetTrafficPresentation()
         ensureAPIClient()
         startPolling()
         await refreshFromAPI(includeSlowCalls: true)
-
-        self.runtimeConfigInput = nil
-        if self.processManager.isRunning, self.processManager.status == launchStatus {
-            let yaml = launchYAML == RuntimeConfigInput.readYAML(at: configPath) ? launchYAML : nil
-            self.runtimeConfigInput = RuntimeConfigInput(yaml: yaml, status: launchStatus, controller: launchController)
-        }
-
-        await self.syncEditableSettingsOverlayForCoreBootstrap(
-            settingsOverlay,
-            syncingKey: options.overlaySyncingKey)
-        await validateTunPermissionsOnStartup()
-        await ensureTunStackOnStartupIfNeeded()
-        await self.verifyTunAfterOverlayIfNeeded(overlay: settingsOverlay)
         enqueueProviderRefresh(trigger: options.providerTrigger)
 
         if options.refreshProxyGroupsAfterBootstrap {
@@ -375,14 +417,6 @@ extension AppViewModel {
                 await self?.refreshAllGroupLatencies()
             }
         }
-    }
-
-    private func overlayApplyingPendingCoreFeatureRecovery(_ overlay: EditableSettingsSnapshot)
-        -> EditableSettingsSnapshot
-    {
-        guard let recovery = self.pendingCoreFeatureRecoveryState else { return overlay }
-        guard recovery.tunEnabled else { return overlay }
-        return overlay.withTunEnabled(true)
     }
 
     private func currentCoreFeatureRecoverySnapshot() -> CoreFeatureRecoveryState {
@@ -479,32 +513,6 @@ extension AppViewModel {
         }
 
         var remainingSystemProxyRecovery = recovery.systemProxyEnabled
-        var remainingTunRecovery = recovery.tunEnabled
-
-        if recovery.tunEnabled {
-            var tunRestored = false
-            do {
-                let runtimeConfig = try await self.fetchRuntimeConfigSnapshot()
-                if runtimeConfig.tunEnabled != true {
-                    try await self.patchTunConfig(enable: true)
-                    try await self.verifyTunRuntimeState(expectedEnabled: true)
-                    tunRestored = true
-                } else if self.isTunEnabled {
-                    tunRestored = true
-                }
-            } catch {
-                self.appendLog(
-                    level: "error",
-                    message: self.tr("log.tun.toggle_failed", self.tunErrorMessage(error)))
-            }
-
-            if tunRestored {
-                self.isTunEnabled = true
-                self.persistEditableSettingsSnapshot()
-                remainingTunRecovery = false
-                self.appendLog(level: "info", message: self.tr("log.tun.toggled", self.tr("log.tun.enabled")))
-            }
-        }
 
         if recovery.systemProxyEnabled {
             self.isProxySyncing = true
@@ -539,7 +547,7 @@ extension AppViewModel {
 
         let remaining = CoreFeatureRecoveryState(
             systemProxyEnabled: remainingSystemProxyRecovery,
-            tunEnabled: remainingTunRecovery)
+            tunEnabled: false)
         self.pendingCoreFeatureRecoveryState = remaining.shouldRecoverAnyFeature ? remaining : nil
     }
 }

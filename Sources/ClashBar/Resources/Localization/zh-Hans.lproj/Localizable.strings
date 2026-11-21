@@ -460,3 +460,24 @@
 "app.config.delete.message" = "此操作将永久删除配置文件。如果这是远程订阅，订阅元数据也会被一并删除。";
 "log.config.delete.success" = "已删除配置：%@";
 "log.config.delete.failed" = "删除配置失败（%@）：%@";
+
+"app.config.apply.unverified" = "无法核实配置是否生效。";
+"app.config.apply.stale" = "操作期间所选配置已变更。";
+"app.config.apply.previous_restored" = "新配置应用失败，已恢复上次加载的版本。";
+"app.config.apply.restore_failed" = "恢复跟随配置失败：%@";
+"app.config.apply.partial" = "未确认生效的字段：%@";
+"app.config.apply.loaded" = "配置已加载";
+"app.config.apply.pending" = "文件已保存，加载后应用。";
+"app.config.apply.verifying" = "正在应用配置…";
+"ui.settings.overrides.title" = "手动覆盖";
+"ui.settings.overrides.follow" = "跟随配置";
+"ui.quick.runtime_config.version" = "已加载的配置版本：%@";
+"ui.quick.runtime_config.launch_source" = "启动参数：%@";
+"ui.quick.runtime_config.override_source" = "已保存的手动覆盖：%@";
+"ui.quick.runtime_config.yaml_source" = "来自已加载 YAML：%@";
+"ui.quick.runtime_config.runtime_source" = "由 Mihomo 回传：%@";
+"ui.quick.runtime_config.declaration_difference" = "%@ 与 YAML 声明 %@ 不同";
+"ui.quick.runtime_config.geo_alias_conflict" = "Mihomo API 键名别名存在冲突：%@";
+"ui.quick.remote.validating" = "正在校验配置…";
+"ui.quick.remote.partially_applied" = "配置部分生效";
+"ui.quick.remote.apply_failed" = "已下载，配置应用失败";

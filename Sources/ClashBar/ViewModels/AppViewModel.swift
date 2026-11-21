@@ -223,6 +223,8 @@ final class AppViewModel: ObservableObject {
     @Published var settingsRedirPort: String = "0"
     @Published var settingsTProxyPort: String = "0"
 
+    @Published var configOverrides = ConfigOverrides()
+    @Published var editedProxyPorts: [String: String] = [:]
     @Published var settingsSyncingKey: String?
     var isCoreSettingSyncing: Bool {
         self.settingsSyncingKey != nil
@@ -231,9 +233,6 @@ final class AppViewModel: ObservableObject {
     @Published var settingsErrorMessage: String?
     @Published var settingsSavedMessage: String?
     var lastSyncedEditableSettings: EditableSettingsSnapshot?
-    var preserveLocalSettingsOnNextSync = false
-    var pendingConfigSwitchOverlaySettings: EditableSettingsSnapshot?
-    var pendingAppLaunchOverlaySettings: EditableSettingsSnapshot?
     var suppressSettingsPersistence = false
 
     var runtimeVisualStatus: RuntimeVisualStatus {
@@ -384,7 +383,6 @@ final class AppViewModel: ObservableObject {
     var providerRefreshTask: Task<Void, Never>?
     var networkAutoStopTask: Task<Void, Never>?
     var networkAutoStartTask: Task<Void, Never>?
-    var deferredEditableSettingsOverlayTask: Task<Void, Never>?
     var coreUpgradeFeedbackClearTask: Task<Void, Never>?
     var geoUpdateFeedbackClearTask: Task<Void, Never>?
     var configDirectoryMonitor: ConfigDirectoryMonitor?
@@ -406,9 +404,8 @@ final class AppViewModel: ObservableObject {
     var didStart = false
     var activatedTabRefreshGeneration: Int = 0
     var configFileSignatureSnapshot: [String: String] = [:]
-    var pendingConfigChangeRestart = false
 
-    let defaults = UserDefaults.standard
+    let defaults: UserDefaults
     @AppStorage("clashbar.auto.start.core") var autoStartCore: Bool = false
     @AppStorage("clashbar.ssid.strategy.enabled") var ssidStrategyEnabledStorage: Bool = false
     @AppStorage("clashbar.statusbar.display.mode") private var statusBarDisplayModeRaw: String = StatusBarDisplayMode
@@ -424,7 +421,6 @@ final class AppViewModel: ObservableObject {
     let editableSettingsSnapshotKey = "clashbar.settings.editable.snapshot.v1"
     let systemProxyEnabledOnQuitKey = "clashbar.system_proxy.enabled_on_quit"
     let systemProxyExceptionsKey = "clashbar.system_proxy.exceptions.v1"
-    let tunStackKey = "clashbar.tun.stack"
     let ssidStrategyRulesKey = "clashbar.ssid.strategy.rules.v1"
     let uiLanguageKey = "clashbar.ui.language"
     let appearanceModeKey = "clashbar.ui.appearance.mode"
@@ -459,15 +455,21 @@ final class AppViewModel: ObservableObject {
     var lastCoreFailureAlertAt: Date?
     var runtimeConfigPreviewPanel: NSPanel?
     var runtimeConfigInput: RuntimeConfigInput?
-    var runtimeConfigReloadCount = 0
+    @Published var runtimeConfigReloadCount = 0
+    var configReadEpoch = UUID()
+    var configBaselineFields: [String: ConfigPatchValue] = [:]
+    @Published var configApplicationIssues: [String] = []
+    @Published var configApplicationFailure: String?
+    @Published var configApplicationLoaded = false
+    @Published var pendingConfigFileNames: Set<String> = []
     let coreFailureAlertThrottleInterval: TimeInterval = 20
     var networkReachabilityStatus: NetworkReachabilityStatus = .unknown
     var shouldResumeCoreAfterNetworkRecovery = false
     var isNetworkReachabilityMonitoring = false
     var isSSIDStrategyMonitoring = false
     var pendingCoreFeatureRecoveryState: CoreFeatureRecoveryState?
-    var deferredEditableSettingsOverlay: (snapshot: EditableSettingsSnapshot, syncingKey: String)?
     var remoteConfigSubscriptions: [String: RemoteConfigSubscription] = [:]
+    var pendingRemoteConfigReplacements: [String: PendingRemoteConfigReplacement] = [:]
     var ssidStrategyLastLogFingerprint: String?
     var pendingSSIDBindingConfigFileName: String?
     var ssidStrategyApplyTask: Task<Void, Never>?
@@ -479,7 +481,8 @@ final class AppViewModel: ObservableObject {
     let bundlesMihomoCore: Bool
     var didPresentInitialNoCoreSetupGuide = false
 
-    init(dependencies: AppDependencies) {
+    init(dependencies: AppDependencies, defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         self.processManager = dependencies.processManager
         self.configService = dependencies.configService
         self.systemProxyService = dependencies.systemProxyService

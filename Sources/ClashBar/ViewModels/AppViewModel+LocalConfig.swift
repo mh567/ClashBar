@@ -32,6 +32,7 @@ extension AppViewModel {
     }
 
     func selectConfig() async {
+        guard !self.isConfigMutationBusy else { return }
         let previousSelectedURL = configService.selectedConfig
         let previousSelectedPath = configService.selectedConfig?.path
         guard configService.chooseConfigDirectory() != nil else { return }
@@ -59,6 +60,8 @@ extension AppViewModel {
             }
         }
 
+        self.cancelProxyPortsAutoSave()
+        self.editedProxyPorts = [:]
         let nextSelectedPath = self.syncSelectedConfigSelection(configService.selectedConfig)
         syncConfigDisplayState()
 
@@ -67,6 +70,7 @@ extension AppViewModel {
     }
 
     func selectConfigFile(named fileName: String) async {
+        guard !self.isConfigMutationBusy else { return }
         let previousSelectedURL = configService.selectedConfig
         let previousSelectedPath = configService.selectedConfig?.path
         guard let matched = configService.availableConfigs.first(where: { $0.lastPathComponent == fileName }) else {
@@ -95,6 +99,9 @@ extension AppViewModel {
             }
         }
 
+        guard !self.isConfigMutationBusy else { return }
+        self.cancelProxyPortsAutoSave()
+        self.editedProxyPorts = [:]
         configService.selectConfig(matched)
         let nextSelectedPath = self.syncSelectedConfigSelection(matched)
         syncConfigDisplayState()
@@ -103,6 +110,7 @@ extension AppViewModel {
     }
 
     func importLocalConfigFile() {
+        guard !self.isConfigMutationBusy else { return }
         guard let configDirectory = ensureConfigDirectoryAvailable() else { return }
 
         self.prepareModalWindowPresentation()
@@ -141,6 +149,10 @@ extension AppViewModel {
             let data = try Data(contentsOf: sourceURL)
             try writeConfigData(data, to: targetURL)
 
+            if sourceURL.standardizedFileURL != targetURL.standardizedFileURL {
+                self.discardRemoteConfigReplacement(for: targetURL)
+                self.removeConfigOverrides(at: targetURL)
+            }
             self.removeRemoteConfigSubscription(for: fileName)
             appendLog(level: "info", message: tr("log.config.import_local.success", fileName))
 

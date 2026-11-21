@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-enum CoreLifecycleStatus: Equatable {
+enum CoreLifecycleStatus: Equatable, Sendable {
     case stopped
     case starting
     case running(pid: Int32)
@@ -300,6 +300,8 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
         if let runningPid = lock.withLock({ process?.isRunning == true ? process?.processIdentifier : nil }) {
             return .running(pid: runningPid)
         }
+
+        try Self.checkControllerPortAvailability(controller)
 
         self.lock.withLock {
             self.intentionalStop = false
@@ -852,6 +854,33 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
                             "mihomo binary permissions are too permissive " +
                             "(writable by group/others): \(path)",
                     ])
+            }
+        }
+    }
+
+    static func checkControllerPortAvailability(_ controller: String) throws {
+        guard let address = URLComponents(string: "http://" + controller), let port = address.port else { return }
+        let host = address.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        var hints = addrinfo()
+        hints.ai_flags = AI_PASSIVE
+        hints.ai_socktype = SOCK_STREAM
+        var interfaces: UnsafeMutablePointer<addrinfo>?
+        guard getaddrinfo(host?.isEmpty == true ? nil : host, String(port), &hints, &interfaces) == 0,
+              let first = interfaces
+        else { return }
+        defer { freeaddrinfo(first) }
+        var next: UnsafeMutablePointer<addrinfo>? = first
+        while let pointer = next {
+            let address = pointer.pointee
+            next = address.ai_next
+            let fd = socket(address.ai_family, address.ai_socktype, address.ai_protocol)
+            if fd >= 0 {
+                var reuse: Int32 = 1
+                _ = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+                let result = Darwin.bind(fd, address.ai_addr, address.ai_addrlen)
+                let reason = errno
+                Darwin.close(fd)
+                if result != 0, reason == EADDRINUSE { throw POSIXError(.EADDRINUSE) }
             }
         }
     }

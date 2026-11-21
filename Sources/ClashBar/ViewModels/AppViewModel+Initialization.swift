@@ -14,6 +14,7 @@ extension AppViewModel {
                 Task { @MainActor in
                     if self?.processManager.isRunning == false {
                         self?.runtimeConfigInput = nil
+                        self?.configApplicationLoaded = false
                     }
                     guard self?.isRemoteTarget != true else { return }
                     let message = self?.tr("log.process.terminated", code) ?? ""
@@ -62,9 +63,14 @@ extension AppViewModel {
     }
 
     private func performDeferredInitialization() {
+        self.configOverrides = self.decodeFromDefaults(ConfigOverrides.self, key: "config-overrides")
+            ?? ConfigOverrides()
+        self.remoteConfigSubscriptions = loadPersistedRemoteConfigSubscriptions()
+        self.pendingRemoteConfigReplacements =
+            self.decodeFromDefaults([String: PendingRemoteConfigReplacement].self, key: "remote-config-replacements") ?? [:]
+        self.pendingConfigFileNames.formUnion(self.pendingRemoteConfigReplacements.keys)
         restoreSavedConfigDirectory()
         restoreLastSuccessfulConfigIfAvailable()
-        self.remoteConfigSubscriptions = loadPersistedRemoteConfigSubscriptions()
         pruneRemoteConfigSubscriptionsIfNeeded()
         restartRemoteConfigBackgroundTasksIfNeeded()
         self.ssidStrategyRules = loadPersistedSSIDStrategyRules()
@@ -77,8 +83,6 @@ extension AppViewModel {
         }
         if let persisted = loadPersistedEditableSettingsSnapshot() {
             applyEditableSettingsSnapshotToUI(persisted)
-            self.preserveLocalSettingsOnNextSync = true
-            self.pendingAppLaunchOverlaySettings = persisted
         }
         let persistedSystemProxyExceptions = loadPersistedSystemProxyExceptions() ?? Self.defaultSystemProxyExceptions
         self.replaceSystemProxyExceptionsDraft(with: persistedSystemProxyExceptions)
@@ -88,7 +92,6 @@ extension AppViewModel {
             guard let self else { return }
             await self.resolveMihomoBinaryPathInBackground()
             await self.refreshFromAPI(includeSlowCalls: true)
-            await self.applyPendingAppLaunchSettingsOverlayIfNeeded()
             self.seedCoreFeatureRecoveryFromPersistedQuitState()
             if self.hasSystemProxyOpenIntent {
                 await self.refreshSystemProxyHelperStatus()

@@ -460,3 +460,24 @@
 "app.config.delete.message" = "This will permanently delete the config file. If it is a remote subscription, the subscription metadata will also be removed.";
 "log.config.delete.success" = "Config deleted: %@";
 "log.config.delete.failed" = "Failed to delete config (%@): %@";
+
+"app.config.apply.unverified" = "Could not verify the applied configuration.";
+"app.config.apply.stale" = "The selected configuration changed during the operation.";
+"app.config.apply.previous_restored" = "The new configuration failed. The previous loaded version is active.";
+"app.config.apply.restore_failed" = "Could not follow the configuration: %@";
+"app.config.apply.partial" = "Fields not confirmed as applied: %@";
+"app.config.apply.loaded" = "Configuration loaded";
+"app.config.apply.pending" = "Saved. Applies when loaded.";
+"app.config.apply.verifying" = "Applying configuration…";
+"ui.settings.overrides.title" = "Manual overrides";
+"ui.settings.overrides.follow" = "Follow configuration";
+"ui.quick.runtime_config.version" = "Loaded configuration version: %@";
+"ui.quick.runtime_config.launch_source" = "Launch argument: %@";
+"ui.quick.runtime_config.override_source" = "Saved manual overrides: %@";
+"ui.quick.runtime_config.yaml_source" = "From loaded YAML: %@";
+"ui.quick.runtime_config.runtime_source" = "Reported by Mihomo: %@";
+"ui.quick.runtime_config.declaration_difference" = "%@ differs from the YAML declaration %@";
+"ui.quick.runtime_config.geo_alias_conflict" = "Conflicting Mihomo API key aliases: %@";
+"ui.quick.remote.validating" = "Validating configuration…";
+"ui.quick.remote.partially_applied" = "Configuration partially applied";
+"ui.quick.remote.apply_failed" = "Downloaded, but failed to apply";

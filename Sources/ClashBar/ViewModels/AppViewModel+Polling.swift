@@ -211,6 +211,7 @@ extension AppViewModel {
     private func refreshMediumFrequency() async {
         await runRefresh {
             let client = try self.clientOrThrow()
+            let epoch = self.configReadEpoch
             async let versionTask: VersionInfo = client.request(.version)
             async let configTask: ConfigSnapshot = client.request(.getConfigs)
 
@@ -226,6 +227,7 @@ extension AppViewModel {
                     proxyGroupsTask,
                     providersTask)
 
+                guard self.configReadEpoch == epoch else { return }
                 self.version = versionInfo.version
                 self.applyRuntimeConfigSnapshot(configSnapshot)
                 self.noteProxyProvidersAPIAvailability(error: providersResult.error)
@@ -235,6 +237,7 @@ extension AppViewModel {
                     requestID: requestID)
             } else {
                 let (versionInfo, configSnapshot) = try await (versionTask, configTask)
+                guard self.configReadEpoch == epoch else { return }
                 self.version = versionInfo.version
                 self.applyRuntimeConfigSnapshot(configSnapshot)
             }
@@ -243,7 +246,9 @@ extension AppViewModel {
 
     func fetchRuntimeConfigSnapshot() async throws -> ConfigSnapshot {
         let client = try clientOrThrow()
+        let epoch = self.configReadEpoch
         let config: ConfigSnapshot = try await client.request(.getConfigs)
+        guard self.configReadEpoch == epoch else { throw ConfigApplicationError.stale }
         self.applyRuntimeConfigSnapshot(config)
         return config
     }

@@ -3,32 +3,14 @@ import AppKit
 @MainActor
 extension AppViewModel {
     func switchMode(to target: CoreMode) async {
-        if !isModeSwitchEnabled || modeSwitchInFlight || target == currentMode {
-            return
-        }
-        modeSwitchInFlight = true
-        defer { modeSwitchInFlight = false }
-
-        let previous = currentMode
-        currentMode = target
-        persistEditableSettingsSnapshot()
-
-        do {
-            try await self.clientOrThrow()
-                .requestNoResponse(.patchConfigs(body: ["mode": .string(target.rawValue)]))
-        } catch {
-            currentMode = previous
-            persistEditableSettingsSnapshot()
-            appendLog(
-                level: "error",
-                message: tr(
-                    "log.action.failed",
-                    tr("log.action_name.switch_mode", target.rawValue),
-                    error.localizedDescription))
-        }
+        guard self.isModeSwitchEnabled, !self.modeSwitchInFlight else { return }
+        self.modeSwitchInFlight = true
+        defer { self.modeSwitchInFlight = false }
+        await self.patchSingleConfig("mode", value: .string(target.rawValue))
     }
 
     func toggleSystemProxy(_ enabled: Bool) async {
+        guard !self.isConfigMutationBusy else { return }
         isProxySyncing = true
         self.systemProxyEnableIntentInFlight = enabled
         self.clearSystemProxyOpenFailureHint()
@@ -45,9 +27,6 @@ extension AppViewModel {
                 try await applySystemProxy(enabled: false, host: self.controllerHost(), ports: .disabled)
                 systemProxyActiveDisplay = nil
             }
-
-            try await self.clientOrThrow()
-                .requestNoResponse(.patchConfigs(body: ["mode": .string(currentMode.rawValue)]))
 
             isSystemProxyEnabled = enabled
             self.clearSystemProxyOpenFailureHint()

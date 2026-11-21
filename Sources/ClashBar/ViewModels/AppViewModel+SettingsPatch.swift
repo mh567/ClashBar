@@ -49,13 +49,16 @@ extension AppViewModel {
         successMessage: String,
         syncSystemProxyPort: Bool = true) async -> Bool
     {
-        self.cancelProxyPortsAutoSaveTask()
+        guard !self.isConfigMutationBusy, self.isRemoteTarget || self.isRuntimeRunning else { return false }
+        let overrideID = self.activeConfigOverrideID
         settingsFeedbackClearTask?.cancel()
         settingsFeedbackClearTask = nil
-        settingsSyncingKey = syncingKey
+        self.settingsSyncingKey = syncingKey
+        self.configReadEpoch = UUID()
         settingsErrorMessage = nil
         settingsSavedMessage = nil
         defer {
+            self.configReadEpoch = UUID()
             settingsSyncingKey = nil
             self.retryPendingProxyPortsAutoSaveIfNeeded()
         }
@@ -71,8 +74,11 @@ extension AppViewModel {
             appendLog(level: "info", message: "PATCH /configs [\(patchKeysDescription)]")
             try await self.clientOrThrow().requestNoResponse(.patchConfigs(body: body.mapValues(\.jsonValue)))
             appendLog(level: "info", message: "PATCH /configs succeeded [\(patchKeysDescription)]")
-            await refreshFromAPI(includeSlowCalls: false)
-            await self.reconcileEditableSettingsWithRuntimeConfig()
+            let observed = try await self.fetchRuntimeConfigSnapshot()
+            guard body.allSatisfy({ ConfigOverrides.matches($0.value, observed.overrideFields[$0.key]) }) else {
+                throw ConfigApplicationError.unverified
+            }
+            self.recordConfigOverrides(body, for: overrideID)
             settingsSavedMessage = successMessage
             self.scheduleSettingsFeedbackAutoClearIfNeeded(message: successMessage)
             await self.syncSystemProxyPortIfNeeded(
@@ -83,69 +89,11 @@ extension AppViewModel {
             appendLog(
                 level: "error",
                 message: "PATCH /configs failed [\(patchKeysDescription)]: \(error.localizedDescription)")
-            let message = tr("app.settings.error.save_failed", syncingKey, error.localizedDescription)
-            if self.isOverlaySyncingKey(syncingKey) {
-                appendLog(level: "error", message: message)
-            } else {
-                settingsErrorMessage = message
-            }
+            self.settingsErrorMessage = tr(
+                "app.settings.error.save_failed", syncingKey, self.configApplicationErrorMessage(error))
             settingsSavedMessage = nil
             await refreshFromAPI(includeSlowCalls: false)
             await self.reconcileEditableSettingsWithRuntimeConfig()
-            return false
-        }
-    }
-
-    func isOverlaySyncingKey(_ syncingKey: String) -> Bool {
-        syncingKey.hasSuffix("-overlay")
-    }
-
-    func scheduleDeferredEditableSettingsOverlaySync() {
-        self.deferredEditableSettingsOverlayTask?.cancel()
-        self.deferredEditableSettingsOverlayTask = Task { [weak self] in
-            guard let self else { return }
-
-            for _ in 0..<120 {
-                if Task.isCancelled {
-                    return
-                }
-                guard self.isRuntimeRunning else { return }
-                if await self.applyDeferredEditableSettingsOverlayIfPossible() {
-                    self.deferredEditableSettingsOverlayTask = nil
-                    return
-                }
-
-                do {
-                    try await Task.sleep(nanoseconds: 250_000_000)
-                } catch {
-                    return
-                }
-            }
-
-            self.deferredEditableSettingsOverlayTask = nil
-        }
-    }
-
-    func applyDeferredEditableSettingsOverlayIfPossible() async -> Bool {
-        guard let deferred = self.deferredEditableSettingsOverlay else { return true }
-        guard await self.isCoreAPIReachableForOverlaySync() else { return false }
-
-        let applied = await self.applyEditableSettingsOverlay(
-            deferred.snapshot,
-            syncingKey: deferred.syncingKey,
-            successMessage: "")
-        if applied {
-            self.deferredEditableSettingsOverlay = nil
-        }
-        return applied
-    }
-
-    private func isCoreAPIReachableForOverlaySync() async -> Bool {
-        do {
-            let client = try self.clientOrThrow()
-            let _: VersionInfo = try await client.request(.version)
-            return true
-        } catch {
             return false
         }
     }
@@ -237,27 +185,14 @@ extension AppViewModel {
         ]
     }
 
-    func tunOverlayPatchBody(enabled: Bool) async -> [String: ConfigPatchValue] {
-        var tunBody: [String: ConfigPatchValue] = ["enable": .bool(enabled)]
-        if enabled, let stack = await self.preferredTunStack() {
-            tunBody["stack"] = .string(stack)
-        }
-        return tunBody
-    }
-
     func validatedPortPatchBody(
         fields: [SettingsPortField],
-        errorMessageKey: String,
-        skipEmptyValues: Bool) -> [String: ConfigPatchValue]?
+        errorMessageKey: String) -> [String: ConfigPatchValue]?
     {
         var body: [String: ConfigPatchValue] = [:]
 
         for field in fields {
             let trimmedValue = field.value.trimmed
-            if skipEmptyValues, trimmedValue.isEmpty {
-                continue
-            }
-
             guard let intValue = Int(trimmedValue), (0...65535).contains(intValue) else {
                 settingsErrorMessage = tr(errorMessageKey, field.key)
                 settingsSavedMessage = nil

@@ -70,27 +70,58 @@ extension AppViewModel {
             textView.string = self.tr("ui.quick.runtime_config.stopped")
             return
         }
-        guard !self.isCoreActionProcessing, self.runtimeConfigReloadCount == 0,
-              let input = self.runtimeConfigInput, input.yaml != nil, input.status == self.processManager.status
+        guard !self.isConfigMutationBusy,
+              let input = self.runtimeConfigInput, let yaml = input.yaml, input.status == self.processManager.status
         else {
             textView.string = self.tr("ui.quick.runtime_config.unavailable")
             return
         }
-        let preview: String
+        let epoch = self.configReadEpoch
+        let details: RuntimeConfigYAML.Details
         do {
             let liveSettings = try await self.clientOrThrow().runtimeConfigPreview()
-            preview = try await input.preview(liveSettings: liveSettings)
+            details = try await RuntimeConfigYAML.inspect(
+                yaml: yaml, settings: liveSettings, controller: input.controller)
         } catch {
             textView.string = self.tr("ui.quick.runtime_config.failed")
             return
         }
-        guard !self.isRemoteTarget, !self.isCoreActionProcessing, self.runtimeConfigReloadCount == 0,
-              input == self.runtimeConfigInput, input.status == self.processManager.status
+        guard !self.isRemoteTarget, !self.isConfigMutationBusy,
+              self.configReadEpoch == epoch, input == self.runtimeConfigInput,
+              input.status == self.processManager.status
         else {
             textView.string = self.tr("ui.quick.runtime_config.unavailable")
             return
         }
-        textView.string = preview
+        var lines: [String] = []
+        if let version = input.version {
+            lines.append(self.tr("ui.quick.runtime_config.version", String(version.prefix(12))))
+        }
+        lines.append(self.tr("ui.quick.runtime_config.launch_source", "external-controller"))
+        if !input.overrides.isEmpty {
+            let fields = input.overrides.keys.sorted().joined(separator: ", ")
+            lines.append(self.tr("ui.quick.runtime_config.override_source", fields))
+        }
+        if !details.declaredOnly.isEmpty {
+            lines.append(self.tr("ui.quick.runtime_config.yaml_source", details.declaredOnly.joined(separator: ", ")))
+        }
+        if !details.runtimeFields.isEmpty {
+            let fields = details.runtimeFields.joined(separator: ", ")
+            lines.append(self.tr("ui.quick.runtime_config.runtime_source", fields))
+        }
+        for (key, value) in details.declarationDifferences.sorted(by: { $0.key < $1.key }) {
+            lines.append(self.tr("ui.quick.runtime_config.declaration_difference", key, String(reflecting: value)))
+        }
+        if !details.geoAliasConflicts.isEmpty {
+            let fields = details.geoAliasConflicts.joined(separator: ", ")
+            lines.append(self.tr("ui.quick.runtime_config.geo_alias_conflict", fields))
+        }
+        if !self.configApplicationIssues.isEmpty {
+            lines.append(self.tr("app.config.apply.partial", self.configApplicationIssues.joined(separator: ", ")))
+        }
+        textView.string = lines
+            .flatMap { $0.components(separatedBy: .newlines) }
+            .map { "# " + $0 }.joined(separator: "\n") + "\n\n" + details.yaml
     }
 }
 

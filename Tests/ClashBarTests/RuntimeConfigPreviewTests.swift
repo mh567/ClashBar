@@ -4,6 +4,20 @@ import Yams
 @testable import ClashBar
 
 final class RuntimeConfigPreviewTests: XCTestCase {
+    func testPreviewDetailsReportLoadedSourcesAndGeoDifference() async throws {
+        let details = try await RuntimeConfigYAML.inspect(
+            yaml: "dns: {enable: true}\nlog-level: warning\ngeox-url: {geoip: https://example.com/source}",
+            settings: #"""
+            {"log-level":"debug","geox-url":{"geo-ip":"https://example.com/other","geoip":"https://example.com/actual"}}
+            """#,
+            controller: "127.0.0.1:9090")
+        XCTAssertTrue(details.declaredOnly.contains("dns"))
+        XCTAssertTrue(details.runtimeFields.contains("geox-url.geoip"))
+        XCTAssertEqual(details.declarationDifferences["geox-url.geoip"], "https://example.com/source")
+        XCTAssertEqual(details.declarationDifferences["log-level"], "warning")
+        XCTAssertEqual(details.geoAliasConflicts, ["geox-url.geoip"])
+    }
+
     func testPreviewMergesLiveOverridesIntoLoadedYAML() async throws {
         let yaml = """
         mixed-port: 7000
@@ -47,6 +61,43 @@ final class RuntimeConfigPreviewTests: XCTestCase {
         XCTAssertEqual(config["rules"]?.array(of: String.self), ["MATCH,on"])
         XCTAssertEqual(config["sniffer"]?["enable"]?.bool, false)
         XCTAssertNil(config["sniffing"])
+    }
+
+    func testPreviewNormalizesGeoURLKeysAndPrefersMatchingAPIKeys() async throws {
+        let aliasPreview = try await RuntimeConfigYAML.merge(
+            yaml: "geox-url: {geoip: yaml-geoip, geosite: yaml-geosite}",
+            settings: "geox-url: {geo-ip: runtime-geoip, geo-site: runtime-geosite}",
+            controller: "127.0.0.1:9090")
+        let aliasConfig = try XCTUnwrap(Yams.compose(yaml: aliasPreview))
+        XCTAssertEqual(aliasConfig["geox-url"]?["geoip"]?.string, "runtime-geoip")
+        XCTAssertEqual(aliasConfig["geox-url"]?["geosite"]?.string, "runtime-geosite")
+
+        let preview = try await RuntimeConfigYAML.merge(
+            yaml: """
+            geox-url:
+              geoip: yaml-geoip
+              geosite: yaml-geosite
+              mmdb: yaml-mmdb
+              asn: yaml-asn
+            """,
+            settings: """
+            geox-url:
+              geo-ip: runtime-geoip
+              geo-site: runtime-geosite
+              geoip: preferred-geoip
+              geosite: preferred-geosite
+              mmdb: runtime-mmdb
+            """,
+            controller: "127.0.0.1:9090")
+
+        let config = try XCTUnwrap(Yams.compose(yaml: preview))
+        let geoURL = try XCTUnwrap(config["geox-url"])
+        XCTAssertEqual(geoURL["geoip"]?.string, "preferred-geoip")
+        XCTAssertEqual(geoURL["geosite"]?.string, "preferred-geosite")
+        XCTAssertEqual(geoURL["mmdb"]?.string, "runtime-mmdb")
+        XCTAssertEqual(geoURL["asn"]?.string, "yaml-asn")
+        XCTAssertNil(geoURL["geo-ip"])
+        XCTAssertNil(geoURL["geo-site"])
     }
 
     func testPreviewPreservesNestedRuntimeFields() async throws {

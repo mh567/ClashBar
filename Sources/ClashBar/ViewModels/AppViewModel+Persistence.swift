@@ -59,6 +59,7 @@ extension AppViewModel {
     }
 
     func syncConfigDisplayState() {
+        self.reconcileConfigFileIdentities()
         configDirectoryPath = configService.configDirectory?.path ?? "-"
         availableConfigFileNames = configService.availableConfigs.map(\.lastPathComponent)
         if selectedConfigName == "-", let first = availableConfigFileNames.first {
@@ -164,6 +165,11 @@ extension AppViewModel {
 
     func pruneRemoteConfigSubscriptionsIfNeeded() {
         let availableNames = Set(availableConfigFileNames)
+        if let directory = self.configService.configDirectory {
+            for name in self.pendingRemoteConfigReplacements.keys where !availableNames.contains(name) {
+                self.discardRemoteConfigReplacement(for: directory.appendingPathComponent(name))
+            }
+        }
         let filtered = remoteConfigSubscriptions.filter { availableNames.contains($0.key) }
         guard filtered.count != remoteConfigSubscriptions.count else { return }
         remoteConfigSubscriptions = filtered

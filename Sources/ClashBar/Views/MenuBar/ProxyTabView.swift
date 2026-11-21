@@ -230,11 +230,35 @@ struct ProxyTabView: TranslatingView {
         return parts.joined(separator: "\n")
     }
 
+    private var configApplicationStatus: String? {
+        let model = self.appViewModel
+        if model.isCoreActionProcessing || model.runtimeConfigReloadCount > 0 {
+            return self.tr("app.config.apply.verifying")
+        }
+        if let failure = model.configApplicationFailure { return failure }
+        if !model.configApplicationIssues.isEmpty {
+            return self.tr("app.config.apply.partial", model.configApplicationIssues.joined(separator: ", "))
+        }
+        return model.configApplicationLoaded && model.isRuntimeRunning ? self.tr("app.config.apply.loaded") : nil
+    }
+
     private func makeConfigMenuItemContext(for name: String) -> ConfigMenuItemContext {
         let remoteSubscription = self.appViewModel.remoteConfigSubscriptions[name]
         let isRemote = remoteSubscription != nil
         let remoteState = self.appViewModel.remoteConfigMenuState(for: name)
-        let remoteSubtitle = isRemote ? self.configMenuRemoteSubtitle(state: remoteState) : nil
+        let remoteSubtitle: String? = switch remoteState.phase {
+        case .validating: self.tr("ui.quick.remote.validating")
+        case .applying: self.tr("app.config.apply.verifying")
+        case .applied: self.tr("app.config.apply.loaded")
+        case .partiallyApplied: self.tr("ui.quick.remote.partially_applied")
+        case .applyFailed: self.tr("ui.quick.remote.apply_failed")
+        case .failed: self.tr("ui.quick.remote.refresh_failed")
+        case .refreshing: self.tr("ui.quick.remote.refreshing")
+        case .idle:
+            self.appViewModel.pendingConfigFileNames.contains(name)
+                ? self.tr("app.config.apply.pending")
+                : (isRemote ? self.configMenuRemoteSubtitle(state: remoteState) : nil)
+        }
         let normalizedConfigFileName = name.trimmed
         let boundSSIDs = self.appViewModel.ssidStrategyRules
             .filter { $0.configFileName == normalizedConfigFileName }
@@ -407,6 +431,10 @@ struct ProxyTabView: TranslatingView {
         let contexts = self.configMenuItemContexts()
         let localContexts = contexts.filter { !$0.isRemote }
         let remoteContexts = contexts.filter(\.isRemote)
+
+        if let status = self.configApplicationStatus {
+            self.configMenuSectionHeader(status)
+        }
 
         if !localContexts.isEmpty {
             self.configMenuSectionHeader(self.tr("ui.quick.configs.local_section"))
@@ -1073,19 +1101,19 @@ private struct ConfigMenuItemView: View {
         let helpText: String
         let tint: Color
         let baseTint: Color
-        let isLoading = phase == .refreshing
+        let isLoading = phase.isInProgress
 
         switch phase {
-        case .idle:
+        case .idle, .applied:
             helpText = self.refreshHelpText
             tint = self.nativeAccent
             baseTint = self.secondaryTextColor
-        case .refreshing:
+        case .refreshing, .validating, .applying:
             helpText = self.refreshingAccessibilityLabel
             tint = self.secondaryTextColor
             baseTint = self.secondaryTextColor
-        case .failed:
-            helpText = self.refreshFailedHelpText
+        case .failed, .applyFailed, .partiallyApplied:
+            helpText = self.itemHelpText ?? self.refreshFailedHelpText
             tint = failureTint
             baseTint = failureTint.opacity(0.92)
         }

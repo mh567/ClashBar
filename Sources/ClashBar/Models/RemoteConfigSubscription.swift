@@ -44,3 +44,12 @@ struct RemoteConfigSubscription: Codable, Equatable {
         lastCheck.addingTimeInterval(TimeInterval(self.autoUpdateIntervalHours) * 3600)
     }
 }
+
+struct PendingRemoteConfigReplacement: Codable, Equatable {
+    let identity: UUID
+    let subscription: RemoteConfigSubscription
+
+    func file(beside target: URL) -> URL {
+        target.deletingLastPathComponent().appendingPathComponent(".clashbar-loaded-\(self.identity.uuidString).yaml")
+    }
+}

@@ -14,11 +14,15 @@ enum TunModeError: LocalizedError {
 @MainActor
 extension AppViewModel {
     func toggleTunMode(_ enabled: Bool) async {
-        guard !isTunSyncing else { return }
-        guard enabled != isTunEnabled else { return }
+        guard !self.isConfigMutationBusy else { return }
+        let overrideID = self.activeConfigOverrideID
 
-        isTunSyncing = true
-        defer { isTunSyncing = false }
+        self.isTunSyncing = true
+        self.configReadEpoch = UUID()
+        defer {
+            self.configReadEpoch = UUID()
+            self.isTunSyncing = false
+        }
 
         do {
             if enabled, !self.isRemoteTarget {
@@ -33,7 +37,8 @@ extension AppViewModel {
             isTunEnabled = actualState
             persistEditableSettingsSnapshot()
 
-            if actualState == enabled {
+            if config.tunEnabled == enabled {
+                self.recordConfigOverrides(["tun.enable": .bool(enabled)], for: overrideID)
                 appendLog(
                     level: "info",
                     message: tr("log.tun.toggled", enabled ? tr("log.tun.enabled") : tr("log.tun.disabled")))
@@ -60,7 +65,8 @@ extension AppViewModel {
     }
 
     func selectTunStack(_ stack: String) async {
-        guard !isTunSyncing else { return }
+        guard !self.isConfigMutationBusy else { return }
+        let overrideID = self.activeConfigOverrideID
 
         if stack.caseInsensitiveCompare("mips") == .orderedSame, !self.isMipsStackSupported {
             let detail = tr("app.tun.mips_requires_upgrade", Self.mipsStackMinimumCoreVersion)
@@ -73,29 +79,25 @@ extension AppViewModel {
             return
         }
 
-        if isTunEnabled, tunStack?.caseInsensitiveCompare(stack) == .orderedSame {
-            return
+        self.isTunSyncing = true
+        self.configReadEpoch = UUID()
+        defer {
+            self.configReadEpoch = UUID()
+            self.isTunSyncing = false
         }
 
-        isTunSyncing = true
-        defer { isTunSyncing = false }
-
         do {
-            if !self.isRemoteTarget {
+            guard self.isRemoteTarget || self.isRuntimeRunning else { return }
+            let baseline = try await self.fetchRuntimeConfigSnapshot()
+            guard let enabled = baseline.tunEnabled else { throw ConfigApplicationError.unverified }
+            if enabled, !self.isRemoteTarget {
                 try await self.ensureTunPermissions(requestIfMissing: true)
             }
-            guard self.isRemoteTarget || self.isRuntimeRunning else { return }
+            try await self.patchTunConfig(enable: enabled, stack: stack)
 
-            try await self.patchTunConfig(enable: true, stack: stack)
-
-            let config = try await fetchRuntimeConfigSnapshot()
-            isTunEnabled = config.tunEnabled ?? false
-            persistEditableSettingsSnapshot()
-
-            if isTunEnabled {
-                if !self.isRemoteTarget {
-                    defaults.set(stack, forKey: tunStackKey)
-                }
+            let config = try await self.fetchRuntimeConfigSnapshot()
+            if config.tunEnabled == enabled, config.tun?.stack?.caseInsensitiveCompare(stack) == .orderedSame {
+                self.recordConfigOverrides(["tun.stack": .string(stack)], for: overrideID)
                 appendLog(level: "info", message: tr("log.tun.stack_changed", stack))
             } else {
                 appendLog(
@@ -105,34 +107,6 @@ extension AppViewModel {
         } catch {
             appendLog(level: "error", message: tr("log.tun.toggle_failed", self.tunErrorMessage(error)))
             await self.refreshTunStatusFromRuntimeConfig()
-        }
-    }
-
-    func prepareTunOverlayForCoreStartup(_ overlay: EditableSettingsSnapshot) async throws -> EditableSettingsSnapshot {
-        guard overlay.tunEnabled else { return overlay }
-
-        do {
-            try await self.ensureTunPermissions(requestIfMissing: true)
-            return overlay
-        } catch {
-            isTunEnabled = false
-            persistEditableSettingsSnapshot()
-            appendLog(level: "warning", message: tr("log.tun.startup_disabled"))
-            return overlay.withTunEnabled(false)
-        }
-    }
-
-    func validateTunPermissionsOnStartup() async {
-        guard isTunEnabled else { return }
-        do {
-            try await self.ensureTunPermissions(requestIfMissing: false)
-        } catch {
-            if isRuntimeRunning {
-                try? await self.patchTunConfig(enable: false)
-            }
-            isTunEnabled = false
-            persistEditableSettingsSnapshot()
-            appendLog(level: "warning", message: tr("log.tun.startup_disabled"))
         }
     }
 
@@ -202,28 +176,6 @@ extension AppViewModel {
         }
     }
 
-    func verifyTunAfterOverlayIfNeeded(overlay: EditableSettingsSnapshot) async {
-        guard overlay.tunEnabled, isRuntimeRunning else { return }
-        guard pendingCoreFeatureRecoveryState == nil else { return }
-
-        do {
-            let config = try await fetchRuntimeConfigSnapshot()
-            if config.tunEnabled == true {
-                isTunEnabled = true
-                persistEditableSettingsSnapshot()
-                return
-            }
-
-            try await self.patchTunConfig(enable: true)
-            try await self.verifyTunRuntimeState(expectedEnabled: true)
-            isTunEnabled = true
-            persistEditableSettingsSnapshot()
-            appendLog(level: "info", message: tr("log.tun.toggled", tr("log.tun.enabled")))
-        } catch {
-            appendLog(level: "error", message: tr("log.tun.toggle_failed", self.tunErrorMessage(error)))
-        }
-    }
-
     func applyTunRuntimeChange(enabled: Bool) async throws {
         guard self.isRemoteTarget || self.isRuntimeRunning else { return }
         try await self.patchTunConfig(enable: enabled)
@@ -244,93 +196,9 @@ extension AppViewModel {
 
         if let stack {
             tunBody["stack"] = .string(stack)
-        } else if enable, let preferred = await self.preferredTunStack() {
-            tunBody["stack"] = .string(preferred)
         }
 
         try await client.requestNoResponse(.patchConfigs(body: ["tun": .object(tunBody)]))
-    }
-
-    func preferredTunStack() async -> String? {
-        if !self.isRemoteTarget, let saved = defaults.string(forKey: tunStackKey)?.trimmedNonEmpty {
-            return saved
-        }
-        return await self.selectedConfigDeclaresTunStack() ? nil : "mixed"
-    }
-
-    func ensureTunStackOnStartupIfNeeded() async {
-        guard self.isRuntimeRunning else { return }
-
-        do {
-            let config = try await fetchRuntimeConfigSnapshot()
-            guard config.tunEnabled == true, let stack = await self.preferredTunStack() else { return }
-            guard config.tun?.stack?.caseInsensitiveCompare(stack) != .orderedSame else { return }
-
-            let client = try clientOrThrow()
-            try await client.requestNoResponse(.patchConfigs(body: ["tun": .object(["stack": .string(stack)])]))
-            _ = try await fetchRuntimeConfigSnapshot()
-        } catch {
-            appendLog(level: "error", message: tr("log.tun.startup_check_failed", self.tunErrorMessage(error)))
-        }
-    }
-
-    func selectedConfigDeclaresTunStack() async -> Bool {
-        guard
-            let configPath = await resolveSelectedConfigPath(),
-            let raw = try? String(contentsOfFile: configPath, encoding: .utf8)
-        else {
-            return false
-        }
-
-        let lines = raw.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: "\n")
-        guard let tunRange = Self.topLevelBlockRange(for: "tun", lines: lines) else { return false }
-        return self.childLineExists(for: "stack", lines: lines, range: tunRange)
-    }
-
-    private func childLineExists(for key: String, lines: [String], range: Range<Int>) -> Bool {
-        for index in (range.lowerBound + 1)..<range.upperBound {
-            let line = lines[index]
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { continue }
-
-            let leadingSpaces = line.prefix { $0 == " " || $0 == "\t" }.count
-            guard leadingSpaces > 0 else { continue }
-
-            let content = String(line.dropFirst(leadingSpaces)).trimmingCharacters(in: .whitespaces)
-            if content == "\(key):" || content.hasPrefix("\(key): ") {
-                return true
-            }
-        }
-        return false
-    }
-
-    static func topLevelBlockRange(for key: String, lines: [String]) -> Range<Int>? {
-        guard let start = lines.firstIndex(where: { isTopLevelKeyLine($0, key: key) }) else {
-            return nil
-        }
-
-        var end = lines.count
-        if start + 1 < lines.count {
-            for index in (start + 1)..<lines.count where self.isTopLevelMappingLine(lines[index]) {
-                end = index
-                break
-            }
-        }
-        return start..<end
-    }
-
-    static func isTopLevelKeyLine(_ line: String, key: String) -> Bool {
-        guard line.prefix(while: { $0 == " " || $0 == "\t" }).isEmpty else { return false }
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return false }
-        return trimmed == "\(key):" || trimmed.hasPrefix("\(key): ")
-    }
-
-    static func isTopLevelMappingLine(_ line: String) -> Bool {
-        guard line.prefix(while: { $0 == " " || $0 == "\t" }).isEmpty else { return false }
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return false }
-        return trimmed.contains(":")
     }
 
     func refreshTunStatusFromRuntimeConfig() async {

@@ -80,20 +80,26 @@ extension AppViewModel {
         await self.patchSingleConfig(setting.configKey, value: .string(normalized))
     }
 
-    func applyProxyPorts(autoSaved: Bool = false) async {
-        if autoSaved, !ProxyPortsDraft.isAutoSavable(self.proxyPortFields) {
+    func applyProxyPorts() async {
+        guard !self.editedProxyPorts.isEmpty else { return }
+        if self.isConfigMutationBusy {
+            self.scheduleProxyPortsAutoSaveIfNeeded()
             return
         }
 
-        guard let body = self.validatedPortPatchBody(
-            fields: self.proxyPortFields,
-            errorMessageKey: "app.settings.error.port_range",
-            skipEmptyValues: false)
+        let fields = self.proxyPortFields.compactMap { field in
+            self.editedProxyPorts[field.key].map { SettingsPortField(key: field.key, value: $0) }
+        }
+        guard ProxyPortsDraft.isAutoSavable(fields),
+              let body = self.validatedPortPatchBody(
+                  fields: fields, errorMessageKey: "app.settings.error.port_range")
         else { return }
 
-        let syncingKey = autoSaved ? "ports-auto" : "ports"
-        let successMessage = autoSaved ? tr("app.settings.saved.ports_auto") : tr("app.settings.saved.ports")
-        await self.patchConfigBody(body, syncingKey: syncingKey, successMessage: successMessage)
+        for field in fields {
+            self.editedProxyPorts.removeValue(forKey: field.key)
+        }
+        await self.patchConfigBody(
+            body, syncingKey: "ports-auto", successMessage: tr("app.settings.saved.ports_auto"))
     }
 
     func scheduleProxyPortsAutoSaveIfNeeded() {
@@ -117,7 +123,7 @@ extension AppViewModel {
                 return
             }
             self.proxyPortsAutoSaveTask = nil
-            await self.applyProxyPorts(autoSaved: true)
+            await self.applyProxyPorts()
         }
     }
 
@@ -137,16 +143,13 @@ extension AppViewModel {
 
         Task { [weak self] in
             guard let self else { return }
-            await self.applyProxyPorts(autoSaved: true)
+            await self.applyProxyPorts()
         }
     }
 
     func retryPendingProxyPortsAutoSaveIfNeeded() {
         guard self.proxyPortsAutoSavePending else { return }
-        // Reconciliation writes the applied ports back into the UI, which can
-        // re-trigger onChange. Only retry while the edited ports still differ
-        // from the last applied snapshot, otherwise this would never settle.
-        guard ProxyPortsDraft.differs(self.proxyPortFields, from: self.lastSyncedEditableSettings) else {
+        guard !self.editedProxyPorts.isEmpty else {
             self.proxyPortsAutoSavePending = false
             return
         }
@@ -155,13 +158,6 @@ extension AppViewModel {
 
     func syncEditableSettings(from config: ConfigSnapshot) {
         let incoming = EditableSettingsSnapshot(config: config)
-
-        if preserveLocalSettingsOnNextSync {
-            preserveLocalSettingsOnNextSync = false
-            lastSyncedEditableSettings = incoming
-            persistEditableSettingsSnapshot()
-            return
-        }
 
         guard let previous = lastSyncedEditableSettings else {
             self.applyEditableSettingsSnapshotToUI(incoming)
@@ -213,103 +209,4 @@ extension AppViewModel {
             tproxyPort: settingsTProxyPort)
     }
 
-    func applyPendingConfigSwitchSettingsOverlayIfNeeded() async {
-        guard let overlay = pendingConfigSwitchOverlaySettings else { return }
-        pendingConfigSwitchOverlaySettings = nil
-        _ = await self.applyEditableSettingsOverlay(
-            overlay,
-            syncingKey: "config-switch-overlay",
-            successMessage: tr("app.settings.overlay_success"))
-    }
-
-    func applyPendingAppLaunchSettingsOverlayIfNeeded(syncSystemProxyPort: Bool = true) async {
-        guard let overlay = pendingAppLaunchOverlaySettings else { return }
-        guard apiStatus == .healthy else { return }
-        pendingAppLaunchOverlaySettings = nil
-        _ = await self.applyEditableSettingsOverlay(
-            overlay,
-            syncingKey: "app-launch-overlay",
-            successMessage: "",
-            syncSystemProxyPort: syncSystemProxyPort)
-    }
-
-    func syncEditableSettingsOverlayForCoreBootstrap(
-        _ overlay: EditableSettingsSnapshot,
-        syncingKey: String) async
-    {
-        self.deferredEditableSettingsOverlay = (snapshot: overlay, syncingKey: syncingKey)
-
-        if await self.applyDeferredEditableSettingsOverlayIfPossible() {
-            self.deferredEditableSettingsOverlayTask?.cancel()
-            self.deferredEditableSettingsOverlayTask = nil
-            return
-        }
-
-        self.scheduleDeferredEditableSettingsOverlaySync()
-    }
-
-    func cancelDeferredEditableSettingsOverlaySync() {
-        self.deferredEditableSettingsOverlayTask?.cancel()
-        self.deferredEditableSettingsOverlayTask = nil
-        self.deferredEditableSettingsOverlay = nil
-    }
-
-    @discardableResult
-    func applyEditableSettingsOverlay(
-        _ overlay: EditableSettingsSnapshot,
-        syncingKey: String,
-        successMessage: String,
-        syncSystemProxyPort: Bool = true) async -> Bool
-    {
-        let fallback = lastSyncedEditableSettings
-        let resolvedLogLevel = overlay.logLevel.trimmed.isEmpty
-            ? (fallback?.logLevel ?? ConfigLogLevel.info.rawValue)
-            : overlay.logLevel
-
-        guard ConfigLogLevel(rawValue: resolvedLogLevel) != nil else {
-            settingsErrorMessage = tr("app.settings.error.overlay_invalid_log_level", resolvedLogLevel)
-            settingsSavedMessage = nil
-            return false
-        }
-
-        let resolvedPortFields = [
-            SettingsPortField(key: "port", value: overlay.port.trimmedNonEmpty ?? fallback?.port.trimmed ?? ""),
-            SettingsPortField(
-                key: "socks-port",
-                value: overlay.socksPort.trimmedNonEmpty ?? fallback?.socksPort.trimmed ?? ""),
-            SettingsPortField(
-                key: "mixed-port",
-                value: overlay.mixedPort.trimmedNonEmpty ?? fallback?.mixedPort.trimmed ?? ""),
-            SettingsPortField(
-                key: "redir-port",
-                value: overlay.redirPort.trimmedNonEmpty ?? fallback?.redirPort.trimmed ?? ""),
-            SettingsPortField(
-                key: "tproxy-port",
-                value: overlay.tproxyPort.trimmedNonEmpty ?? fallback?.tproxyPort.trimmed ?? ""),
-        ]
-        guard let portBody = validatedPortPatchBody(
-            fields: resolvedPortFields,
-            errorMessageKey: "app.settings.error.overlay_port_range",
-            skipEmptyValues: true)
-        else { return false }
-
-        var body: [String: ConfigPatchValue] = [
-            "mode": .string(overlay.mode.rawValue),
-            "allow-lan": .bool(overlay.allowLan),
-            "ipv6": .bool(overlay.ipv6),
-            "tcp-concurrent": .bool(overlay.tcpConcurrent),
-            "log-level": .string(resolvedLogLevel),
-        ]
-        let tunBody = await self.tunOverlayPatchBody(enabled: overlay.tunEnabled)
-        body["tun"] = .object(tunBody)
-        for (key, value) in portBody {
-            body[key] = value
-        }
-
-        return await self.patchConfigBody(
-            body,
-            syncingKey: syncingKey,
-            successMessage: successMessage,
-            syncSystemProxyPort: syncSystemProxyPort)
-    }
 }

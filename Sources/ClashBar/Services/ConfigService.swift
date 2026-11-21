@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 struct WorkingDirectoryManager {
@@ -182,6 +183,17 @@ final class ConfigDirectoryManager {
 
 struct ConfigImportService {
     private let maxRemoteConfigBytes = 5 * 1024 * 1024
+
+    static func writePrivateConfigData(_ data: Data, to target: URL) throws {
+        let temporary = target.deletingLastPathComponent().appendingPathComponent(".clashbar-\(UUID())")
+        let manager = FileManager.default
+        defer { try? manager.removeItem(at: temporary) }
+        guard manager.createFile(atPath: temporary.path, contents: data, attributes: [.posixPermissions: 0o600])
+        else { throw CocoaError(.fileWriteUnknown) }
+        if Darwin.rename(temporary.path, target.path) != 0 {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+    }
 
     @discardableResult
     func writeConfigData(_ data: Data, to targetURL: URL) throws -> Bool {

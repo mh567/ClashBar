@@ -1,9 +1,25 @@
 import Foundation
 
-struct RuntimeConfigInput: Equatable {
+struct RuntimeConfigInput: Equatable, Sendable {
     let yaml: String?
     let status: CoreLifecycleStatus
     let controller: String
+
+    let version: String?
+    var overrides: [String: ConfigPatchValue]
+    let selectedPath: String?
+
+    init(
+        yaml: String?, status: CoreLifecycleStatus, controller: String,
+        version: String? = nil, overrides: [String: ConfigPatchValue] = [:], selectedPath: String? = nil
+    ) {
+        self.yaml = yaml
+        self.status = status
+        self.controller = controller
+        self.version = version
+        self.overrides = overrides
+        self.selectedPath = selectedPath
+    }
 
     static func readYAML(at path: String) -> String? {
         try? String(contentsOfFile: path, encoding: .utf8)
@@ -73,7 +89,7 @@ enum ConfigLogLevel: String, CaseIterable, Identifiable {
     }
 }
 
-enum ConfigPatchValue {
+enum ConfigPatchValue: Codable, Equatable, Sendable {
     case bool(Bool)
     case int(Int)
     case string(String)
@@ -155,7 +171,19 @@ enum ProviderRefreshPhase {
 enum RemoteConfigRefreshPhase: Equatable {
     case idle
     case refreshing
+    case validating
+    case applying(UUID)
+    case applied
+    case partiallyApplied
+    case applyFailed
     case failed
+
+    var isInProgress: Bool {
+        switch self {
+        case .refreshing, .validating, .applying: true
+        default: false
+        }
+    }
 }
 
 struct RemoteConfigMenuState: Equatable {
@@ -309,23 +337,6 @@ struct EditableSettingsSnapshot: Equatable, Codable {
         self.mixedPort = try container.decode(String.self, forKey: .mixedPort)
         self.redirPort = try container.decode(String.self, forKey: .redirPort)
         self.tproxyPort = try container.decode(String.self, forKey: .tproxyPort)
-    }
-}
-
-extension EditableSettingsSnapshot {
-    func withTunEnabled(_ enabled: Bool) -> EditableSettingsSnapshot {
-        EditableSettingsSnapshot(
-            mode: self.mode,
-            allowLan: self.allowLan,
-            ipv6: self.ipv6,
-            tcpConcurrent: self.tcpConcurrent,
-            tunEnabled: enabled,
-            logLevel: self.logLevel,
-            port: self.port,
-            socksPort: self.socksPort,
-            mixedPort: self.mixedPort,
-            redirPort: self.redirPort,
-            tproxyPort: self.tproxyPort)
     }
 }
 
