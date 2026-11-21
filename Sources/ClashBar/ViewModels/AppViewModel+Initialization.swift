@@ -64,6 +64,9 @@ extension AppViewModel {
     private func performDeferredInitialization() {
         self.configOverrides = self.decodeFromDefaults(ConfigOverrides.self, key: "config-overrides")
             ?? ConfigOverrides()
+        if self.configOverrides.migrateLegacyModeOverrides() {
+            self.persistConfigOverrides()
+        }
         self.remoteConfigSubscriptions = loadPersistedRemoteConfigSubscriptions()
         self.pendingRemoteConfigReplacements =
             self.decodeFromDefaults([String: PendingRemoteConfigReplacement].self, key: "remote-config-replacements") ?? [:]

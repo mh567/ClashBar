@@ -145,6 +145,53 @@ final class ConfigOverridesTests: XCTestCase {
         XCTAssertEqual(explicit, values)
     }
 
+    func testMigrationPrunesLegacyModesAndPreservesModesSavedAfterMigration() throws {
+        struct LegacyOverrides: Encodable {
+            let identities: [String: UUID]
+            let fileIDs: [String: String]
+            let values: [UUID: [String: ConfigPatchValue]]
+        }
+
+        let first = UUID()
+        let second = UUID()
+        let legacy = LegacyOverrides(
+            identities: ["/a.yaml": first, "/b.yaml": second],
+            fileIDs: ["/a.yaml": "file-a"],
+            values: [first: ["mode": .string("global"), "mixed-port": .int(7891)], second: ["mode": .string("direct")]])
+        var migrated = try JSONDecoder().decode(ConfigOverrides.self, from: JSONEncoder().encode(legacy))
+        XCTAssertTrue(migrated.migrateLegacyModeOverrides())
+        XCTAssertEqual(migrated.identities, legacy.identities)
+        XCTAssertEqual(migrated.fileIDs, legacy.fileIDs)
+        XCTAssertEqual(migrated.values, [first: ["mixed-port": .int(7891)]])
+
+        migrated.values[first]?["mode"] = .string("direct")
+        var reopened = try JSONDecoder().decode(ConfigOverrides.self, from: JSONEncoder().encode(migrated))
+        XCTAssertFalse(reopened.migrateLegacyModeOverrides())
+        XCTAssertEqual(reopened.values[first]?["mode"], .string("direct"))
+    }
+
+    @MainActor
+    func testProxyExceptionSaveWaitsForMutationAndCapturesOnlySubmittedText() async throws {
+        let model = self.makeIsolatedModel()
+        model.settingsSyncingKey = "busy"
+        model.replaceSystemProxyExceptionsDraft(with: ["queued.example"])
+        model.saveSystemProxyExceptions()
+        let save = try XCTUnwrap(model.systemProxyExceptionsSaveTask)
+        XCTAssertEqual(model.pendingSystemProxyExceptionsSave, ["queued.example"])
+
+        model.replaceSystemProxyExceptionsDraft(with: ["still-editing.example"])
+        await Task.yield()
+        XCTAssertEqual(model.pendingSystemProxyExceptionsSave, ["queued.example"])
+        // Keep this queue test independent of the macOS proxy Helper.
+        model.lastSavedSystemProxyExceptions = ["queued.example"]
+        model.settingsSyncingKey = nil
+        await save.value
+
+        XCTAssertNil(model.pendingSystemProxyExceptionsSave)
+        XCTAssertNil(model.systemProxyExceptionsSaveTask)
+        XCTAssertEqual(model.currentSystemProxyExceptionValues(), ["still-editing.example"])
+    }
+
     @MainActor
     func testCoreSettingsDraftSurvivesPanelCloseAndDiscardKeepsLiveValues() {
         let model = self.makeIsolatedModel()
@@ -212,6 +259,7 @@ final class ConfigOverridesTests: XCTestCase {
             "ui.settings.core.undo_restore",
             "ui.settings.core.select_stack",
             "ui.settings.core.invalid_port",
+            "ui.settings.core.system_proxy_requires_port",
             "ui.settings.exceptions.retry",
             "ui.settings.overrides.item.restore_help",
             "ui.settings.section.app",

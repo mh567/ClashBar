@@ -400,6 +400,8 @@ final class AppViewModel: ObservableObject {
     var lastTrafficSampleAt: Date?
     var lastTrafficDecodeAt: Date = .distantPast
     var lastSavedSystemProxyExceptions: [String] = []
+    var pendingSystemProxyExceptionsSave: [String]?
+    var systemProxyExceptionsSaveTask: Task<Void, Never>?
     var pendingTrafficPayload: Data?
     var pendingMihomoLogs: [AppErrorLogEntry] = []
     var modeSwitchInFlight = false

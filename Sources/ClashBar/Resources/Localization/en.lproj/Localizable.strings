@@ -491,6 +491,7 @@
 "ui.settings.core.undo_restore" = "Undo pending restore for %@";
 "ui.settings.core.select_stack" = "Select a TUN stack for the next apply";
 "ui.settings.core.invalid_port" = "Enter a value from 0 to 65535 for %@.";
+"ui.settings.core.system_proxy_requires_port" = "Keep an HTTP, SOCKS, or mixed port enabled while System Proxy is on.";
 "ui.settings.exceptions.retry" = "Retry";
 "ui.settings.section.app" = "App settings";
 "ui.settings.section.core" = "Core settings";

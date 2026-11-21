@@ -253,12 +253,12 @@ struct StatusItemBanner: Equatable, Identifiable {
 struct CoreFeatureRecoveryState {
     let systemProxyEnabled: Bool
     let tunEnabled: Bool
-    let tunConfigPath: String?
+    let tunConfigID: UUID?
 
-    init(systemProxyEnabled: Bool, tunEnabled: Bool, tunConfigPath: String? = nil) {
+    init(systemProxyEnabled: Bool, tunEnabled: Bool, tunConfigID: UUID? = nil) {
         self.systemProxyEnabled = systemProxyEnabled
         self.tunEnabled = tunEnabled
-        self.tunConfigPath = tunConfigPath
+        self.tunConfigID = tunConfigID
     }
 
     var shouldRecoverAnyFeature: Bool {

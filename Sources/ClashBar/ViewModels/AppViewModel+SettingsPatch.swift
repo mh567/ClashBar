@@ -62,23 +62,26 @@ extension AppViewModel {
             self.configReadEpoch = UUID()
             settingsSyncingKey = nil
         }
-        let shouldSyncSystemProxyPort = !self.isRemoteTarget && body.keys.contains { key in
+        let shouldSyncSystemProxyPort = self.isSystemProxyEnabled && !self.isRemoteTarget && body.keys.contains { key in
             key == "mixed-port" || key == "port" || key == "socks-port"
         }
-        let previousSystemProxyPorts =
-            await previousSystemProxyPortsForSyncIfNeeded(shouldSync: shouldSyncSystemProxyPort)
 
         let patchKeysDescription = body.keys.sorted().joined(separator: ", ")
         var expected = body
         var baseline: ConfigSnapshot?
         var didSendPatch = false
+        var didAttemptSystemProxySync = false
         do {
-            if isCoreSettingsBatch {
+            if isCoreSettingsBatch || shouldSyncSystemProxyPort {
                 baseline = try await self.fetchRuntimeConfigSnapshot()
                 let enableKey = ConfigOverrideField.tunEnable.rawValue
                 if body[ConfigOverrideField.tunStack.rawValue] != nil, body[enableKey] == nil {
                     expected[enableKey] = baseline?.tunEnabled.map(ConfigPatchValue.bool)
                 }
+            }
+            if shouldSyncSystemProxyPort, let baseline {
+                let intended = baseline.overrideFields.merging(body) { _, edit in edit }
+                _ = try self.validatedSystemProxyPorts(for: intended)
             }
             let request = try await self.coreSettingsPatch(body, baseline: baseline)
             ensureAPIClient()
@@ -90,12 +93,20 @@ extension AppViewModel {
             guard expected.allSatisfy({ ConfigOverrides.matches($0.value, observed.overrideFields[$0.key]) }) else {
                 throw ConfigApplicationError.unverified
             }
+            if shouldSyncSystemProxyPort, let baseline {
+                let previousPorts = self.systemProxyPorts(from: baseline)
+                let newPorts = self.systemProxyPorts(from: observed)
+                if newPorts != previousPorts {
+                    didAttemptSystemProxySync = true
+                    try await self.synchronizeSystemProxyWithRuntimeConfig()
+                    self.appendLog(
+                        level: "info", message: self.tr("log.system_proxy.port_synced", newPorts.primaryPort ?? 0))
+                    await self.closeAllConnections()
+                }
+            }
             self.recordConfigOverrides(body, for: overrideID, origin: origin)
             settingsSavedMessage = successMessage
             self.scheduleSettingsFeedbackAutoClearIfNeeded(message: successMessage)
-            await self.syncSystemProxyPortIfNeeded(
-                shouldSync: shouldSyncSystemProxyPort,
-                previousPorts: previousSystemProxyPorts)
             return true
         } catch {
             appendLog(
@@ -105,6 +116,9 @@ extension AppViewModel {
             if didSendPatch, let baseline {
                 do {
                     try await self.restoreSettingsPatch(matching: baseline, keys: Set(expected.keys))
+                    if didAttemptSystemProxySync {
+                        try await self.synchronizeSystemProxyWithRuntimeConfig()
+                    }
                 } catch {
                     detail = self.tr("app.config.apply.recovery_failed", detail)
                 }
@@ -173,35 +187,6 @@ extension AppViewModel {
             return apiClient
         }
         throw APIError.invalidURL
-    }
-
-    private func previousSystemProxyPortsForSyncIfNeeded(shouldSync: Bool) async -> SystemProxyPorts? {
-        guard shouldSync, isSystemProxyEnabled else { return nil }
-        do {
-            let config: ConfigSnapshot = try await self.clientOrThrow().request(.getConfigs)
-            return systemProxyPorts(from: config)
-        } catch {
-            return currentSystemProxyPortsFromState()
-        }
-    }
-
-    private func syncSystemProxyPortIfNeeded(shouldSync: Bool, previousPorts: SystemProxyPorts?) async {
-        guard shouldSync, isSystemProxyEnabled else { return }
-
-        do {
-            let target = try await resolveSystemProxyTargetFromRuntimeConfig()
-            try await applySystemProxy(enabled: true, host: target.host, ports: target.ports)
-            try await self.applyCurrentSystemProxyExceptionsIfNeeded()
-            systemProxyActiveDisplay = buildSystemProxyDisplayString(host: target.host, ports: target.ports)
-            appendLog(level: "info", message: tr("log.system_proxy.port_synced", target.ports.primaryPort ?? 0))
-
-            if let previousPorts, previousPorts != target.ports {
-                await closeAllConnections()
-            }
-        } catch {
-            appendLog(level: "error", message: tr("log.system_proxy.port_sync_failed", systemProxyErrorMessage(error)))
-            await self.refreshSystemProxyHelperStatus()
-        }
     }
 
     func reconcileEditableSettingsWithRuntimeConfig() async {

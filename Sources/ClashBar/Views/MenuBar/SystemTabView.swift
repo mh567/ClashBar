@@ -191,19 +191,12 @@ struct SystemTabView: TranslatingView {
         }
         .onChange(of: self.focusedProxyException) { [focusedProxyException] _ in
             if focusedProxyException != nil {
-                Task { await self.appViewModel.saveSystemProxyExceptions() }
+                self.appViewModel.saveSystemProxyExceptions()
             }
         }
         .onDisappear {
             if self.focusedProxyException != nil {
-                Task { await self.appViewModel.saveSystemProxyExceptions() }
-            }
-        }
-        .onChange(of: self.appViewModel.isConfigMutationBusy) { busy in
-            if !busy, self.section == .app, self.focusedProxyException == nil,
-               self.appViewModel.systemProxyExceptionsError == nil
-            {
-                Task { await self.appViewModel.saveSystemProxyExceptions() }
+                self.appViewModel.saveSystemProxyExceptions()
             }
         }
         .overlay(alignment: .top) {
@@ -367,7 +360,7 @@ struct SystemTabView: TranslatingView {
             HStack(spacing: T.space4) {
                 Button {
                     self.appViewModel.restoreDefaultSystemProxyExceptionsDraft()
-                    Task { await self.appViewModel.saveSystemProxyExceptions() }
+                    self.appViewModel.saveSystemProxyExceptions()
                 } label: {
                     Label(self.tr("ui.action.restore_defaults"), systemImage: "arrow.counterclockwise")
                 }
@@ -376,7 +369,7 @@ struct SystemTabView: TranslatingView {
 
                 if self.appViewModel.systemProxyExceptionsError != nil {
                     Button(self.tr("ui.settings.exceptions.retry")) {
-                        Task { await self.appViewModel.saveSystemProxyExceptions() }
+                        self.appViewModel.saveSystemProxyExceptions()
                     }
                     .appBorderedButtonStyle()
                     .controlSize(.small)
@@ -395,7 +388,7 @@ struct SystemTabView: TranslatingView {
 
     func addSystemProxyException() {
         self.appViewModel.addSystemProxyExceptionDraft()
-        Task { await self.appViewModel.saveSystemProxyExceptions() }
+        self.appViewModel.saveSystemProxyExceptions()
     }
 
     var maintenanceSection: some View {
@@ -926,7 +919,7 @@ struct SystemTabView: TranslatingView {
 
             Button {
                 self.appViewModel.removeSystemProxyExceptionDraft(id: exception.id)
-                Task { await self.appViewModel.saveSystemProxyExceptions() }
+                self.appViewModel.saveSystemProxyExceptions()
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(nativeCritical.opacity(T.Opacity.solid))

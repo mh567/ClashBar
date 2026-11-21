@@ -491,6 +491,7 @@
 "ui.settings.core.undo_restore" = "撤销「%@」的待恢复操作";
 "ui.settings.core.select_stack" = "为下次应用选择 TUN 协议栈";
 "ui.settings.core.invalid_port" = "%@请输入 0 到 65535 之间的值。";
+"ui.settings.core.system_proxy_requires_port" = "系统代理开启时，至少保留一个 HTTP、SOCKS 或混合端口。";
 "ui.settings.exceptions.retry" = "重试";
 "ui.settings.section.app" = "应用设置";
 "ui.settings.section.core" = "内核设置";

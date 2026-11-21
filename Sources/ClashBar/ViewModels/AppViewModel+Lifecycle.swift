@@ -363,6 +363,8 @@ extension AppViewModel {
         self.startupRefreshTask = nil
         self.autoStartTask?.cancel()
         self.autoStartTask = nil
+        self.systemProxyExceptionsSaveTask?.cancel()
+        self.pendingSystemProxyExceptionsSave = nil
         self.settingsFeedbackClearTask?.cancel()
         self.settingsFeedbackClearTask = nil
         self.coreUpgradeFeedbackClearTask?.cancel()
@@ -477,15 +479,15 @@ extension AppViewModel {
             CoreFeatureRecoveryState(
                 systemProxyEnabled: self.isSystemProxyEnabled,
                 tunEnabled: self.isTunEnabled,
-                tunConfigPath: self.runningTunConfigPath),
+                tunConfigID: self.runningTunConfigID),
             self.pendingCoreFeatureRecoveryState)
     }
 
-    private var runningTunConfigPath: String? {
+    private var runningTunConfigID: UUID? {
         if let path = self.runtimeConfigInput?.selectedPath {
-            return ConfigOverrides.pathKey(for: URL(fileURLWithPath: path))
+            return self.configOverrides.identities[ConfigOverrides.pathKey(for: URL(fileURLWithPath: path))]
         }
-        return self.configService.selectedConfig.map(ConfigOverrides.pathKey(for:))
+        return self.activeConfigOverrideID
     }
 
     private func mergeCoreFeatureRecoveryStates(
@@ -495,7 +497,7 @@ extension AppViewModel {
         CoreFeatureRecoveryState(
             systemProxyEnabled: (first?.systemProxyEnabled ?? false) || (second?.systemProxyEnabled ?? false),
             tunEnabled: (first?.tunEnabled ?? false) || (second?.tunEnabled ?? false),
-            tunConfigPath: first?.tunEnabled == true ? first?.tunConfigPath : second?.tunConfigPath)
+            tunConfigID: first?.tunEnabled == true ? first?.tunConfigID : second?.tunConfigID)
     }
 
     private func prepareCoreFeatureRecoveryBeforeCoreTransition(
@@ -507,7 +509,7 @@ extension AppViewModel {
         let capturedRecovery = CoreFeatureRecoveryState(
             systemProxyEnabled: runtimeRunningBeforeTransition && self.isSystemProxyEnabled,
             tunEnabled: runtimeRunningBeforeTransition && self.isTunEnabled,
-            tunConfigPath: self.runningTunConfigPath)
+            tunConfigID: self.runningTunConfigID)
 
         let baseRecovery: CoreFeatureRecoveryState = if capturedRecovery.shouldRecoverAnyFeature {
             capturedRecovery

@@ -6,6 +6,7 @@ enum ConfigApplicationError: Error {
     case stale
     case recoveryFailed(String)
     case restoreFailed(String)
+    case systemProxyRequiresPort
     case fields([String])
 }
 

@@ -5,6 +5,40 @@ import XCTest
 
 final class ConfigApplicationIntegrationTests: XCTestCase {
     @MainActor
+    func testSettingsCannotRemoveTheLastActiveSystemProxyPort() async throws {
+        try await self.withRunningCore { model, selected, _, controller, nextPort, _ in
+            let original = try await model.fetchRuntimeConfigSnapshot()
+            model.isSystemProxyEnabled = true
+            model.stageCoreSetting(.mixedPort, value: .string("0"))
+            await model.applyCoreSettings()
+            model.isSystemProxyEnabled = false
+            XCTAssertNotNil(model.coreSettingsError)
+            XCTAssertNil(model.settingsSavedMessage)
+            XCTAssertEqual(model.pendingCoreSettingsCount, 1)
+            XCTAssertTrue(model.activeConfigOverrides.isEmpty)
+            let unchanged = try await model.fetchRuntimeConfigSnapshot()
+            XCTAssertEqual(unchanged.mixedPort, original.mixedPort)
+
+            model.discardCoreSettings()
+            try Self.config(controller: controller, mixedPort: 0)
+                .write(to: selected, atomically: true, encoding: .utf8)
+            await model.reloadConfig()
+            await model.patchSingleConfig("mixed-port", value: .int(nextPort))
+            model.isSystemProxyEnabled = true
+            model.stageCoreSettingsRestore(["mixed-port"])
+            await model.applyCoreSettings()
+            model.isSystemProxyEnabled = false
+            XCTAssertNotNil(model.coreSettingsError)
+            XCTAssertNil(model.settingsSavedMessage)
+            XCTAssertEqual(model.pendingCoreSettingsCount, 1)
+            XCTAssertEqual(model.activeConfigOverrides["mixed-port"], .int(nextPort))
+            let preserved = try await model.fetchRuntimeConfigSnapshot()
+            XCTAssertEqual(preserved.mixedPort, nextPort)
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
     func testCoreSettingsApplyEditsAndRestoresTogether() async throws {
         try await self.withRunningCore { model, selected, _, _, next, occupied in
             let original = try await model.fetchRuntimeConfigSnapshot()
@@ -78,12 +112,26 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
     }
 
     @MainActor
+    func testSamePathWithNewIdentityDoesNotInheritTunRecovery() async throws {
+        try await self.withRunningCore { model, selected, _, _, _, _ in
+            let originalID = try XCTUnwrap(model.activeConfigOverrideID)
+            model.pendingCoreFeatureRecoveryState = CoreFeatureRecoveryState(
+                systemProxyEnabled: false, tunEnabled: true, tunConfigID: originalID)
+            XCTAssertTrue(model.shouldRecoverTunForSelectedConfig)
+
+            model.configOverrides.identities[ConfigOverrides.pathKey(for: selected)] = UUID()
+            XCTAssertFalse(model.shouldRecoverTunForSelectedConfig)
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
     func testConfigSwitchDoesNotRecoverTunForThePreviousConfig() async throws {
         try await self.withRunningCore { model, selected, nextFile, controller, nextPort, _ in
             try Self.config(controller: controller, mixedPort: nextPort).write(
                 to: nextFile, atomically: true, encoding: .utf8)
             model.pendingCoreFeatureRecoveryState = CoreFeatureRecoveryState(
-                systemProxyEnabled: false, tunEnabled: true, tunConfigPath: ConfigOverrides.pathKey(for: selected))
+                systemProxyEnabled: false, tunEnabled: true, tunConfigID: try XCTUnwrap(model.activeConfigOverrideID))
             XCTAssertTrue(model.isAwaitingTunRecovery)
 
             model.configService.selectConfig(nextFile)

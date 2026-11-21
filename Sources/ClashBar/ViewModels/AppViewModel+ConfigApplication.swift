@@ -26,7 +26,11 @@ extension AppViewModel {
     var shouldRecoverTunForSelectedConfig: Bool {
         guard !self.isRemoteTarget, let recovery = self.pendingCoreFeatureRecoveryState, recovery.tunEnabled
         else { return false }
-        return recovery.tunConfigPath == self.configService.selectedConfig.map(ConfigOverrides.pathKey(for:))
+        guard let selected = self.configService.selectedConfig else { return recovery.tunConfigID == nil }
+        guard let identity = self.configOverrides.identities[ConfigOverrides.pathKey(for: selected)] else {
+            return false
+        }
+        return identity == recovery.tunConfigID
     }
 
     var configApplicationOutcome: ConfigApplicationOutcome {
@@ -47,8 +51,9 @@ extension AppViewModel {
         case let .recoveryFailed(failure): self.tr("app.config.apply.recovery_failed", failure)
         case .stale: self.tr("app.config.apply.stale")
         case let .restoreFailed(failure): self.tr("app.config.apply.restore_failed", failure)
+        case .systemProxyRequiresPort: self.tr("ui.settings.core.system_proxy_requires_port")
         case let .fields(fields): self.tr("app.config.apply.partial", fields.joined(separator: ", "))
-        case nil: self.tunErrorMessage(error)
+        case nil: error is SystemProxyServiceError ? self.systemProxyErrorMessage(error) : self.tunErrorMessage(error)
         }
     }
 
@@ -79,7 +84,7 @@ extension AppViewModel {
 
     func acknowledgeLoadedConfig(
         at path: String, yaml: String, status: CoreLifecycleStatus,
-        controller: String, overrides: [String: ConfigPatchValue]? = nil
+        controller: String, overrides: [String: ConfigPatchValue]? = nil, requireSystemProxySync: Bool = false
     ) async throws {
         let identity = self.activeConfigOverrideID
         let intended = overrides ?? self.activeConfigOverrides
@@ -122,21 +127,12 @@ extension AppViewModel {
         }
         self.configApplicationFailure = failure ?? (observed == nil ? self.tr("app.config.apply.unverified") : nil)
 
-        if self.isSystemProxyEnabled {
+        if self.isSystemProxyEnabled || requireSystemProxySync {
             do {
-                let target = try await self.resolveSystemProxyTargetFromRuntimeConfig()
-                if try await !self.isSystemProxyConfigured(host: target.host, ports: target.ports) {
-                    try await self.applySystemProxy(enabled: true, host: target.host, ports: target.ports)
-                    try await self.applyCurrentSystemProxyExceptionsIfNeeded()
-                }
-                guard try await self.isSystemProxyConfigured(host: target.host, ports: target.ports) else {
-                    throw ConfigApplicationError.unverified
-                }
-                self.systemProxyActiveDisplay = self.buildSystemProxyDisplayString(
-                    host: target.host, ports: target.ports)
+                try await self.synchronizeSystemProxyWithRuntimeConfig()
             } catch {
                 self.configApplicationFailure = self.configApplicationErrorMessage(error)
-                self.updateSystemProxyOpenFailureHint(for: error)
+                if requireSystemProxySync { throw error }
             }
         }
 
@@ -205,13 +201,16 @@ extension AppViewModel {
         ].compactMap { $0 }.joined(separator: " ")
     }
 
-    func restoreLoadedConfig(_ input: RuntimeConfigInput, at path: String, matching fields: [String: ConfigPatchValue]?)
-        async throws
+    func restoreLoadedConfig(
+        _ input: RuntimeConfigInput, at path: String, matching fields: [String: ConfigPatchValue]?,
+        requireSystemProxySync: Bool = false
+    ) async throws
     {
         guard let yaml = input.yaml else { throw ConfigApplicationError.unverified }
         try await self.clientOrThrow().requestNoResponse(.putConfigs(force: true, path: path, payload: yaml))
         try await self.acknowledgeLoadedConfig(
-            at: path, yaml: yaml, status: input.status, controller: input.controller, overrides: input.overrides)
+            at: path, yaml: yaml, status: input.status, controller: input.controller, overrides: input.overrides,
+            requireSystemProxySync: requireSystemProxySync)
         try await self.requireRestoredConfig(matching: fields)
     }
 
@@ -241,6 +240,9 @@ extension AppViewModel {
         }
 
         let baseline = try await self.fetchRuntimeConfigSnapshot()
+        let expectedFields = declared.merging(intended) { _, override in override }
+        let requireSystemProxySync = try self.isSystemProxyEnabled
+            && self.validatedSystemProxyPorts(for: expectedFields) != self.systemProxyPorts(from: baseline)
         // Reloading YAML resets the temporary proxy mode unless it is reapplied with the overrides.
         var runtimeOverrides = intended
         if edits["mode"] == nil, !keys.contains("mode") {
@@ -255,7 +257,8 @@ extension AppViewModel {
         do {
             try await self.clientOrThrow().requestNoResponse(.putConfigs(force: true, path: path, payload: yaml))
             try await self.acknowledgeLoadedConfig(
-                at: path, yaml: yaml, status: input.status, controller: input.controller, overrides: runtimeOverrides)
+                at: path, yaml: yaml, status: input.status, controller: input.controller, overrides: runtimeOverrides,
+                requireSystemProxySync: requireSystemProxySync)
 
             let observed = try await self.fetchRuntimeConfigSnapshot().overrideFields
             var expected = edits
@@ -283,7 +286,9 @@ extension AppViewModel {
             do {
                 var recovery = input
                 recovery.overrides["mode"] = baseline.overrideFields["mode"]
-                try await self.restoreLoadedConfig(recovery, at: path, matching: baseline.overrideFields)
+                try await self.restoreLoadedConfig(
+                    recovery, at: path, matching: baseline.overrideFields,
+                    requireSystemProxySync: requireSystemProxySync)
                 self.runtimeConfigInput?.overrides = input.overrides
                 self.reportRestoredConfig(after: failure)
             } catch {

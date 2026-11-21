@@ -46,16 +46,30 @@ extension AppViewModel {
         self.replaceSystemProxyExceptionsDraft(with: Self.defaultSystemProxyExceptions)
     }
 
-    func saveSystemProxyExceptions() async {
-        guard !self.isConfigMutationBusy else { return }
+    func saveSystemProxyExceptions() {
+        self.pendingSystemProxyExceptionsSave = self.currentSystemProxyExceptionValues()
+        guard self.systemProxyExceptionsSaveTask == nil else { return }
+        self.systemProxyExceptionsSaveTask = Task { [weak self] in
+            defer { self?.systemProxyExceptionsSaveTask = nil }
+            while !Task.isCancelled, let self, let submitted = self.pendingSystemProxyExceptionsSave {
+                if self.isConfigMutationBusy {
+                    guard (try? await Task.sleep(for: .milliseconds(50))) != nil else { return }
+                    continue
+                }
+                self.pendingSystemProxyExceptionsSave = nil
+                await self.applySystemProxyExceptions(submitted)
+            }
+        }
+    }
+
+    private func applySystemProxyExceptions(_ submitted: [String]) async {
         self.systemProxyExceptionsError = nil
-        guard self.hasPendingSystemProxyExceptionsChanges else { return }
-        let normalized = self.currentSystemProxyExceptionValues()
+        guard submitted != self.lastSavedSystemProxyExceptions else { return }
         self.settingsSyncingKey = "system-proxy-exceptions"
 
         do {
-            try await self.systemProxyService.setExceptionsList(normalized)
-            self.lastSavedSystemProxyExceptions = normalized
+            try await self.systemProxyService.setExceptionsList(submitted)
+            self.lastSavedSystemProxyExceptions = submitted
             self.persistSystemProxyExceptions()
             let message = self.tr("app.settings.saved.system_proxy_exceptions")
             self.settingsSavedMessage = message
@@ -71,11 +85,11 @@ extension AppViewModel {
     }
 
     func refreshSystemProxyExceptionsFromSystemIfPossible(overwriteEmpty: Bool = false) async {
-        guard !self.hasPendingSystemProxyExceptionsChanges else { return }
+        guard !self.hasPendingSystemProxyExceptionsChanges, self.systemProxyExceptionsSaveTask == nil else { return }
 
         do {
             let values = try await self.systemProxyService.readExceptionsList()
-            guard !self.hasPendingSystemProxyExceptionsChanges, self.settingsSyncingKey != "system-proxy-exceptions"
+            guard !self.hasPendingSystemProxyExceptionsChanges, self.systemProxyExceptionsSaveTask == nil
             else { return }
             let normalized = self.normalizedSystemProxyExceptionValues(values)
             guard normalized != self.lastSavedSystemProxyExceptions, overwriteEmpty || !normalized.isEmpty
@@ -234,6 +248,35 @@ extension AppViewModel {
             throw SystemProxyServiceError.invalidPort
         }
         return (host: controllerHost(), ports: ports)
+    }
+
+    func validatedSystemProxyPorts(for fields: [String: ConfigPatchValue]) throws -> SystemProxyPorts {
+        func port(_ key: String) -> Int? {
+            guard case let .int(value)? = fields[key] else { return nil }
+            return value
+        }
+        let ports = Self.resolveSystemProxyPorts(
+            mixedPort: port("mixed-port"), httpPort: port("port"), socksPort: port("socks-port"))
+        guard ports.hasEnabledPort else { throw ConfigApplicationError.systemProxyRequiresPort }
+        return ports
+    }
+
+    func synchronizeSystemProxyWithRuntimeConfig() async throws {
+        do {
+            let target = try await self.resolveSystemProxyTargetFromRuntimeConfig()
+            if try await !self.isSystemProxyConfigured(host: target.host, ports: target.ports) {
+                try await self.applySystemProxy(enabled: true, host: target.host, ports: target.ports)
+                try await self.applyCurrentSystemProxyExceptionsIfNeeded()
+                guard try await self.isSystemProxyConfigured(host: target.host, ports: target.ports) else {
+                    throw ConfigApplicationError.unverified
+                }
+            }
+            self.systemProxyActiveDisplay = self.buildSystemProxyDisplayString(host: target.host, ports: target.ports)
+            self.clearSystemProxyOpenFailureHint()
+        } catch {
+            self.updateSystemProxyOpenFailureHint(for: error)
+            throw error
+        }
     }
 
     func ensureSystemProxyConsistencyOnFirstLaunchIfNeeded() async {

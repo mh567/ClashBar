@@ -4,6 +4,18 @@ struct ConfigOverrides: Codable, Equatable {
     var identities: [String: UUID] = [:]
     var fileIDs: [String: String] = [:]
     var values: [UUID: [String: ConfigPatchValue]] = [:]
+    // Older stores did not distinguish temporary and explicit mode choices.
+    private var modeOverridesAreExplicit: Bool? = true
+
+    mutating func migrateLegacyModeOverrides() -> Bool {
+        guard self.modeOverridesAreExplicit != true else { return false }
+        for (id, var fields) in self.values {
+            fields.removeValue(forKey: ConfigOverrideField.mode.rawValue)
+            self.values[id] = fields.isEmpty ? nil : fields
+        }
+        self.modeOverridesAreExplicit = true
+        return true
+    }
 
     static func pathKey(for file: URL) -> String {
         file.standardizedFileURL.deletingLastPathComponent().resolvingSymlinksInPath()
