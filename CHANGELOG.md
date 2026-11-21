@@ -1,3 +1,30 @@
+## v1.1.12
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.12-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 内核设置支持批量应用和恢复，应用设置改动后直接保存。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **批量应用内核设置**：编辑多项后点击「应用更改」一次提交，也可放弃更改。
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **按配置固定运行模式**：在内核设置中应用模式可保存为配置覆盖，顶部模式栏只切换当前运行模式。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **统一恢复入口**：「全部恢复」先暂存恢复操作，应用时统一重载配置，并提前提示代理可能短暂中断。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **系统代理绕过自动保存**：增删或恢复默认后直接应用，编辑已有条目时按回车或离开输入框即可保存。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **TUN 重启恢复**：恢复请求限定于原配置，切换配置或同名替换订阅时会采用新配置的 TUN 设置。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **系统代理端口校验**：系统代理开启时阻止关闭最后一个可用代理端口，同步失败时保留草稿并尝试回退。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **旧模式覆盖清理**：升级时清理早期版本遗留的临时模式记录。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **面板高度**：切换到分流、连接或日志时，列表会重新使用可用面板高度。
+
+---
+
 ## v1.1.11
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.11-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
