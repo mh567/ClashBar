@@ -84,8 +84,7 @@ extension AppViewModel {
             disableRuntimeTunBeforeStop: trigger == .networkLoss)
         cancelProviderRefresh(reason: "stop requested")
         await self.processManager.stop()
-        self.runtimeConfigInput = nil
-        self.configApplicationLoaded = false
+        self.clearLoadedConfigState()
         cancelPolling()
         statusText = "Stopped"
         apiStatus = .unknown
@@ -186,8 +185,7 @@ extension AppViewModel {
                 transitionKind: .restart,
                 disableRuntimeTunBeforeStop: false)
         }
-        self.runtimeConfigInput = nil
-        self.configApplicationLoaded = false
+        self.clearLoadedConfigState()
         self.statusText = "Starting"
 
         do {
@@ -235,8 +233,7 @@ extension AppViewModel {
                 }
                 try await self.requireRestoredConfig(matching: oldFields)
             } catch {
-                self.runtimeConfigInput = nil
-                self.configApplicationLoaded = false
+                self.clearLoadedConfigState()
                 if self.processManager.isRunning { await self.processManager.stop() }
                 throw ConfigApplicationError.recoveryFailed(failure + " " + self.configApplicationErrorMessage(error))
             }

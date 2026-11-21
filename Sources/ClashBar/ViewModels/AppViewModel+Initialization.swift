@@ -13,8 +13,7 @@ extension AppViewModel {
             managedProcess.onTermination = { [weak self] code in
                 Task { @MainActor in
                     if self?.processManager.isRunning == false {
-                        self?.runtimeConfigInput = nil
-                        self?.configApplicationLoaded = false
+                        self?.clearLoadedConfigState()
                     }
                     guard self?.isRemoteTarget != true else { return }
                     let message = self?.tr("log.process.terminated", code) ?? ""
@@ -65,6 +64,7 @@ extension AppViewModel {
     private func performDeferredInitialization() {
         self.configOverrides = self.decodeFromDefaults(ConfigOverrides.self, key: "config-overrides")
             ?? ConfigOverrides()
+        self.pruneNonPersistableConfigOverrides()
         self.remoteConfigSubscriptions = loadPersistedRemoteConfigSubscriptions()
         self.pendingRemoteConfigReplacements =
             self.decodeFromDefaults([String: PendingRemoteConfigReplacement].self, key: "remote-config-replacements") ?? [:]

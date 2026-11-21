@@ -85,21 +85,25 @@ struct ConfigSnapshot: Codable, Equatable {
     struct TunConfig: Codable, Equatable {
         let enable: Bool?
         let stack: String?
+        let routeExcludeAddress: [String]?
 
         private enum CodingKeys: String, CodingKey {
             case enable
             case stack
+            case routeExcludeAddress = "route-exclude-address"
         }
 
-        init(enable: Bool?, stack: String?) {
+        init(enable: Bool?, stack: String?, routeExcludeAddress: [String]? = nil) {
             self.enable = enable
             self.stack = stack
+            self.routeExcludeAddress = routeExcludeAddress
         }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             self.enable = container.decodeFlexibleBool(forKey: .enable)
             self.stack = container.decodeFlexibleString(forKey: .stack)
+            self.routeExcludeAddress = try? container.decodeIfPresent([String].self, forKey: .routeExcludeAddress)
         }
     }
 

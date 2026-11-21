@@ -490,8 +490,7 @@ extension AppViewModel {
                     try await self.restoreLoadedConfig(oldInput, at: path, matching: oldFields)
                     self.reportRestoredConfig(after: failure)
                 } catch {
-                    self.configApplicationLoaded = false
-                    self.runtimeConfigInput = nil
+                    self.clearLoadedConfigState()
                     self.configApplicationFailure = self.tr("app.config.apply.recovery_failed", failure)
                 }
             }

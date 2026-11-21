@@ -57,6 +57,12 @@ struct ConfigOverrides: Codable, Equatable {
         return expected == actual
     }
 
+    static func persistableFields(
+        from values: [String: ConfigPatchValue]) -> [String: ConfigPatchValue]
+    {
+        values.filter { key, _ in ConfigOverrideField.isPersistableKey(key) }
+    }
+
     static func request(
         for fields: [String: ConfigPatchValue], tunEnabled: Bool?
     ) -> [String: ConfigPatchValue] {
@@ -148,9 +154,27 @@ extension AppViewModel {
 
     func recordConfigOverrides(_ values: [String: ConfigPatchValue], for id: UUID?) {
         guard let id, id == self.activeConfigOverrideID else { return }
-        self.configOverrides.values[id, default: [:]].merge(values) { _, new in new }
+        let persistable = ConfigOverrides.persistableFields(from: values)
+        guard !persistable.isEmpty else { return }
+        self.configOverrides.values[id, default: [:]].merge(persistable) { _, new in new }
         self.runtimeConfigInput?.overrides = self.configOverrides.values[id] ?? [:]
         self.persistConfigOverrides()
+    }
+
+    /// Older builds stored `mode` as an override when the proxy mode was switched.
+    /// Drop those records once so the mode follows the configuration again.
+    func pruneNonPersistableConfigOverrides() {
+        var removedAny = false
+        for (id, values) in self.configOverrides.values {
+            let kept = ConfigOverrides.persistableFields(from: values)
+            guard kept.count != values.count else { continue }
+            self.configOverrides.values[id] = kept.isEmpty ? nil : kept
+            removedAny = true
+        }
+        if removedAny {
+            self.persistConfigOverrides()
+            self.runtimeConfigInput?.overrides = self.activeConfigOverrides
+        }
     }
 }
 

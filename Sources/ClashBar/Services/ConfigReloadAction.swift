@@ -44,17 +44,33 @@ enum ConfigReloadAction {
     }
 
     static func baselineListenerIssues(
-        yaml: String, observed: [String: ConfigPatchValue], overrides: [String: ConfigPatchValue]
-    ) throws -> [String] {
-        let values = try self.fields(in: yaml)
+        declared: [String: ConfigPatchValue], observed: [String: ConfigPatchValue],
+        overrides: [String: ConfigPatchValue]
+    ) -> [String] {
         let checked = self.ports + ["allow-lan", "bind-address", "tun.enable"]
         return checked.filter { key in
-            guard overrides[key] == nil, let expected = values[key], let actual = observed[key] else { return false }
+            guard overrides[key] == nil, let expected = declared[key], let actual = observed[key] else {
+                return false
+            }
             return !ConfigOverrides.matches(expected, actual)
         }.sorted()
     }
 
-    static func fields(in yaml: String) throws -> [String: ConfigPatchValue] {
+    static func baselineListenerIssues(
+        yaml: String, observed: [String: ConfigPatchValue], overrides: [String: ConfigPatchValue]
+    ) throws -> [String] {
+        self.baselineListenerIssues(
+            declared: try self.fields(in: yaml), observed: observed, overrides: overrides)
+    }
+
+    struct ParsedConfig {
+        let fields: [String: ConfigPatchValue]
+        let tunRouteExcludeAddress: [String]?
+    }
+
+    /// Parses the loaded YAML exactly once. Callers on the render path must not
+    /// re-parse per frame: a 45 KB config costs ~8 ms with Yams.
+    static func parse(_ yaml: String) throws -> ParsedConfig {
         let mapping = try self.mapping(in: yaml)
         let tun = mapping["tun"] as? [String: Any]
         var fields = self.ports.reduce(into: [String: ConfigPatchValue]()) {
@@ -70,7 +86,13 @@ enum ConfigReloadAction {
         for key in ["ipv6", "tcp-concurrent"] {
             fields[key] = (mapping[key] as? Bool).map(ConfigPatchValue.bool)
         }
-        return fields
+        return ParsedConfig(
+            fields: fields,
+            tunRouteExcludeAddress: tun?["route-exclude-address"] as? [String])
+    }
+
+    static func fields(in yaml: String) throws -> [String: ConfigPatchValue] {
+        try self.parse(yaml).fields
     }
 
     private static func mapping(in yaml: String) throws -> [String: Any] {

@@ -267,6 +267,7 @@ extension AppViewModel {
         mixedPort = config.mixedPort ?? 0
 
         tunStack = config.tun?.stack?.trimmedNonEmpty ?? tunStack
+        tunRouteExcludeAddress = config.tun?.routeExcludeAddress
 
         if !self.isRemoteTarget, let externalController = config.externalController {
             applyExternalControllerFromConfig(externalController)

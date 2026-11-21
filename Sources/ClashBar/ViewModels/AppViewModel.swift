@@ -173,6 +173,12 @@ final class AppViewModel: ObservableObject {
 
     @Published var tunStack: String?
 
+    @Published var tunRouteExcludeAddress: [String]?
+
+    /// Parsed once when a config is acknowledged so the settings render path never
+    /// re-parses YAML.
+    var loadedConfigTunRouteExcludeAddress: [String]?
+
     @Published var apiStatus: APIHealth = .unknown {
         didSet { self.refreshMenuBarDisplaySnapshotIfNeeded() }
     }
