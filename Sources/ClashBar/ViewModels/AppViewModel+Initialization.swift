@@ -71,6 +71,7 @@ extension AppViewModel {
         self.pendingConfigFileNames.formUnion(self.pendingRemoteConfigReplacements.keys)
         restoreSavedConfigDirectory()
         restoreLastSuccessfulConfigIfAvailable()
+        self.removeRedundantLegacyConfigBackups()
         pruneRemoteConfigSubscriptionsIfNeeded()
         restartRemoteConfigBackgroundTasksIfNeeded()
         self.ssidStrategyRules = loadPersistedSSIDStrategyRules()

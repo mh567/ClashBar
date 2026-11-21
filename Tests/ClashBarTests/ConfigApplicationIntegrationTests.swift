@@ -5,6 +5,258 @@ import XCTest
 
 final class ConfigApplicationIntegrationTests: XCTestCase {
     @MainActor
+    func testRestartRecoversWhenCommitDirectoryBecomesReadOnly() async throws {
+        try XCTSkipIf(geteuid() == 0, "Directory permissions must restrict the test process.")
+        try await self.withRunningCore { model, selected, _, _, next, _ in
+            let original = try String(contentsOf: selected, encoding: .utf8)
+            let directory = selected.deletingLastPathComponent()
+            let manager = FileManager.default
+            let permissions = try manager.attributesOfItem(atPath: directory.path)[.posixPermissions]
+            let candidate = directory.appendingPathComponent(".test-restart.yaml")
+            let endpoint = try Self.boundTCPPort()
+            Darwin.close(endpoint.socket)
+            let incoming = Self.config(controller: endpoint.port, mixedPort: next)
+            try incoming.write(to: candidate, atomically: true, encoding: .utf8)
+            model.lastCoreFailureAlertKey = "core-restart-failed"
+            model.lastCoreFailureAlertAt = Date()
+
+            for formalYAML in [original, original + "\n# edited while the old core was running"] {
+                try formalYAML.write(to: selected, atomically: true, encoding: .utf8)
+                let outcome = await model.restartCore(candidate: candidate) {
+                    XCTAssertEqual(model.runtimeConfigInput?.yaml, incoming)
+                    try manager.setAttributes([.posixPermissions: 0o500], ofItemAtPath: directory.path)
+                    try model.writeConfigData(Data(incoming.utf8), to: selected)
+                    XCTFail("The test must deny the final write.")
+                }
+                try manager.setAttributes([.posixPermissions: permissions ?? 0o700], ofItemAtPath: directory.path)
+                XCTAssertEqual(outcome, .failed)
+                XCTAssertTrue(model.processManager.isRunning, model.configApplicationFailure ?? "")
+                XCTAssertEqual(model.runtimeConfigInput?.yaml, original)
+                XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), formalYAML)
+            }
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
+    func testFailedUpdateRestoresPreviouslyEffectiveSettingsWhenAnOverrideWasUnavailable() async throws {
+        try await self.withRunningCore { model, selected, _, controller, next, occupied in
+            let original = try String(contentsOf: selected, encoding: .utf8)
+            let name = selected.lastPathComponent
+            let subscription = try XCTUnwrap(model.remoteConfigSubscriptions[name])
+            await model.patchSingleConfig("log-level", value: .string("debug"))
+            model.recordConfigOverrides(["tun.enable": .bool(true)], for: model.activeConfigOverrideID)
+            let initial = await model.reloadConfig()
+            XCTAssertEqual(initial, .partial)
+            let before = try await model.fetchRuntimeConfigSnapshot()
+            XCTAssertEqual(before.tunEnabled, false)
+            XCTAssertEqual(before.logLevel, "debug")
+            model.lastCoreFailureAlertKey = "core-restart-failed"
+            model.lastCoreFailureAlertAt = Date()
+
+            for rejected in [
+                Self.config(controller: controller, mixedPort: occupied),
+                Self.config(controller: occupied, mixedPort: next),
+            ] {
+                do {
+                    try await model.installDownloadedRemoteSubscription(
+                        Data(rejected.utf8), at: selected, subscription: subscription)
+                    XCTFail("The failed update must be reported.")
+                } catch {
+                    XCTAssertTrue(model.processManager.isRunning)
+                    XCTAssertEqual(model.runtimeConfigInput?.yaml, original)
+                    XCTAssertTrue(model.configApplicationIssues.contains("tun.enable"))
+                    let restored = try await model.fetchRuntimeConfigSnapshot()
+                    XCTAssertEqual(restored.overrideFields, before.overrideFields)
+                    XCTAssertEqual(model.activeConfigOverrides["tun.enable"], .bool(true))
+                }
+            }
+            await model.restoreConfigField("log-level")
+            XCTAssertNil(model.activeConfigOverrides["log-level"])
+            XCTAssertEqual(model.activeConfigOverrides["tun.enable"], .bool(true))
+            XCTAssertTrue(model.configApplicationIssues.contains("tun.enable"))
+            let restored = try await model.fetchRuntimeConfigSnapshot()
+            XCTAssertEqual(restored.logLevel, "warning")
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
+    func testAutomaticRefreshDiscardedAfterSelectionChangesRemainsDue() async throws {
+        try await self.withRunningCore { model, selected, nextFile, controller, next, _ in
+            let original = try String(contentsOf: selected, encoding: .utf8)
+            let incoming = Self.config(controller: controller, mixedPort: next)
+            try incoming.write(to: nextFile, atomically: true, encoding: .utf8)
+            let server = try Self.boundTCPPort()
+            defer { Darwin.close(server.socket) }
+            let name = selected.lastPathComponent
+            let subscription = RemoteConfigSubscription(
+                urlString: "http://127.0.0.1:\(server.port)/config", autoUpdateEnabled: true)
+            model.remoteConfigSubscriptions[name] = subscription
+            let response = Task.detached {
+                let header = "HTTP/1.1 200 OK\r\nContent-Length: \(incoming.utf8.count)\r\nConnection: close\r\n\r\n"
+                for attempt in 0..<2 {
+                    var listener = pollfd(fd: server.socket, events: Int16(POLLIN), revents: 0)
+                    guard Darwin.poll(&listener, 1, 10_000) > 0 else { throw POSIXError(.ETIMEDOUT) }
+                    let connection = Darwin.accept(server.socket, nil, nil)
+                    guard connection >= 0 else { throw POSIXError(.EIO) }
+                    defer { Darwin.close(connection) }
+                    var request = pollfd(fd: connection, events: Int16(POLLIN), revents: 0)
+                    guard Darwin.poll(&request, 1, 5_000) > 0 else { throw POSIXError(.ETIMEDOUT) }
+                    var buffer = [UInt8](repeating: 0, count: 4096)
+                    guard Darwin.recv(connection, &buffer, buffer.count, 0) > 0 else { throw POSIXError(.EIO) }
+                    if attempt == 0 {
+                        await model.selectConfigFile(named: nextFile.lastPathComponent)
+                    }
+                    let handle = FileHandle(fileDescriptor: connection, closeOnDealloc: false)
+                    try handle.write(contentsOf: Data((header + incoming).utf8))
+                }
+            }
+            await model.performDueRemoteConfigAutoUpdatesIfNeeded()
+            XCTAssertEqual(model.selectedConfigName, nextFile.lastPathComponent)
+            XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), original)
+            XCTAssertEqual(model.remoteConfigSubscriptions[name], subscription)
+            XCTAssertEqual(model.remoteConfigSubscriptions[name]?.isDue(), true)
+            XCTAssertEqual(model.remoteConfigMenuState(for: name).phase, .idle)
+
+            await model.performDueRemoteConfigAutoUpdatesIfNeeded()
+            try await response.value
+            XCTAssertEqual(model.selectedConfigName, nextFile.lastPathComponent)
+            XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), incoming)
+            XCTAssertNotNil(model.remoteConfigSubscriptions[name]?.lastUpdateCheckAt)
+            XCTAssertEqual(model.remoteConfigSubscriptions[name]?.isDue(), false)
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
+    func testSameSourceUpdateKeepsFormalYAMLUntilRuntimeAcceptsIt() async throws {
+        try await self.withRunningCore { model, selected, _, controller, next, occupied in
+            let original = try String(contentsOf: selected, encoding: .utf8)
+            let subscription = try XCTUnwrap(model.remoteConfigSubscriptions[selected.lastPathComponent])
+            let backup = try XCTUnwrap(model.lastLoadedConfigURL(for: selected.path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path))
+            await model.patchSingleConfig("log-level", value: .string("debug"))
+            model.lastCoreFailureAlertKey = "core-restart-failed"
+            model.lastCoreFailureAlertAt = Date()
+
+            for rejected in [
+                Self.config(controller: controller, mixedPort: occupied),
+                Self.config(controller: occupied, mixedPort: next),
+            ] {
+                do {
+                    try await model.installDownloadedRemoteSubscription(
+                        Data(rejected.utf8), at: selected, subscription: subscription)
+                    XCTFail("The failed update must be reported to the caller.")
+                } catch {
+                    XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), original)
+                    XCTAssertEqual(model.runtimeConfigInput?.yaml, original)
+                    let runtime = try await model.fetchRuntimeConfigSnapshot()
+                    XCTAssertEqual(runtime.logLevel, "debug")
+                }
+            }
+
+            let accepted = Self.config(controller: controller, mixedPort: next)
+            try await model.installDownloadedRemoteSubscription(
+                Data(accepted.utf8), at: selected, subscription: subscription)
+            XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), accepted)
+            XCTAssertEqual(model.runtimeConfigInput?.yaml, accepted)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path))
+            let files = try FileManager.default.contentsOfDirectory(atPath: selected.deletingLastPathComponent().path)
+            XCTAssertFalse(files.contains { $0.hasPrefix(".clashbar-") })
+
+            try original.write(to: selected, atomically: true, encoding: .utf8)
+            XCTAssertFalse(model.isConfigMutationBusy)
+            await model.restoreConfigField("log-level")
+            XCTAssertTrue(model.activeConfigOverrides.isEmpty, model.settingsErrorMessage ?? "No restore error")
+            XCTAssertEqual(model.runtimeConfigInput?.yaml, accepted)
+            XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), original)
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
+    func testCommitFailureRestoresRuntimeAfterCandidateHasLoaded() async throws {
+        try await self.withRunningCore { model, selected, _, controller, next, _ in
+            let original = try String(contentsOf: selected, encoding: .utf8)
+            let candidate = selected.deletingLastPathComponent().appendingPathComponent(".test-candidate.yaml")
+            let incoming = Self.config(controller: controller, mixedPort: next)
+            try incoming.write(to: candidate, atomically: true, encoding: .utf8)
+            let externalEdit = original + "\n# external edit"
+
+            let name = selected.lastPathComponent
+            let outcome = await model.reloadRefreshedRemoteConfig(named: name, candidate: candidate) {
+                XCTAssertEqual(model.runtimeConfigInput?.yaml, incoming)
+                XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), original)
+                try externalEdit.write(to: selected, atomically: true, encoding: .utf8)
+                throw ConfigApplicationError.stale
+            }
+            XCTAssertEqual(outcome, .failed)
+            XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), externalEdit)
+            XCTAssertEqual(model.runtimeConfigInput?.yaml, original)
+            XCTAssertTrue(try XCTUnwrap(model.configApplicationFailure).contains(
+                model.tr("app.config.apply.previous_restored")))
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
+    func testInactiveSubscriptionKeepsOnlyLatestDownload() async throws {
+        try await self.withRunningCore { model, selected, inactive, controller, _, occupied in
+            let original = try String(contentsOf: selected, encoding: .utf8)
+            let subscription = RemoteConfigSubscription(urlString: "https://example.com/inactive.yaml")
+            let name = inactive.lastPathComponent
+            model.remoteConfigSubscriptions[name] = subscription
+            let latest = Self.config(controller: controller, mixedPort: occupied)
+            let changed = try await model.installDownloadedRemoteSubscription(
+                Data(latest.utf8), at: inactive, subscription: subscription)
+            XCTAssertTrue(changed)
+            XCTAssertTrue(model.pendingConfigFileNames.contains(name))
+            XCTAssertEqual(try String(contentsOf: inactive, encoding: .utf8), latest)
+            XCTAssertEqual(model.runtimeConfigInput?.yaml, original)
+
+            await model.stopCore()
+            await model.selectConfigFile(named: name)
+            model.lastCoreFailureAlertKey = "core-start-failed"
+            model.lastCoreFailureAlertAt = Date()
+            await model.startCore()
+            XCTAssertFalse(model.processManager.isRunning)
+            XCTAssertNil(model.runtimeConfigInput)
+            XCTAssertNotNil(model.configApplicationFailure)
+            XCTAssertEqual(try String(contentsOf: inactive, encoding: .utf8), latest)
+        }
+    }
+
+    @MainActor
+    func testLegacyBackupSurvivesUntilFormalYAMLLoads() async throws {
+        try await self.withRunningCore { model, selected, _, controller, next, occupied in
+            let original = try String(contentsOf: selected, encoding: .utf8)
+            let backup = try XCTUnwrap(model.lastLoadedConfigURL(for: selected.path))
+            try original.write(to: backup, atomically: true, encoding: .utf8)
+            model.removeRedundantLegacyConfigBackups()
+            XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path))
+
+            await model.stopCore()
+            try original.write(to: backup, atomically: true, encoding: .utf8)
+            let unbindable = Self.config(controller: controller, mixedPort: occupied)
+            try unbindable.write(to: selected, atomically: true, encoding: .utf8)
+            model.removeRedundantLegacyConfigBackups()
+            XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path))
+            await model.startCore()
+            XCTAssertEqual(model.runtimeConfigInput?.yaml, original)
+            XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), unbindable)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: backup.path))
+
+            let subscription = try XCTUnwrap(model.remoteConfigSubscriptions[selected.lastPathComponent])
+            let accepted = Self.config(controller: controller, mixedPort: next)
+            try await model.installDownloadedRemoteSubscription(
+                Data(accepted.utf8), at: selected, subscription: subscription)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: backup.path))
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
     func testLoadsSubscriptionAndRollsBackToPreviousConfiguration() async throws {
         try await self.withRunningCore { model, selected, rejected, controller, next, occupied in
             await model.patchSingleConfig("log-level", value: .string("debug"))
@@ -46,7 +298,9 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             try updated.write(to: selected, atomically: true, encoding: .utf8)
 
             do {
-                try await model.validateDownloadedConfig(Data("tun: [invalid".utf8), for: selected)
+                let subscription = try XCTUnwrap(model.remoteConfigSubscriptions[selected.lastPathComponent])
+                try await model.installDownloadedRemoteSubscription(
+                    Data("tun: [invalid".utf8), at: selected, subscription: subscription)
                 XCTFail("The malformed candidate must be rejected by Mihomo.")
             } catch {
                 XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), updated)
@@ -121,7 +375,7 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             }
 
             let recoveryFile = try XCTUnwrap(model.lastLoadedConfigURL(for: selected.path))
-            XCTAssertTrue(FileManager.default.fileExists(atPath: recoveryFile.path))
+            XCTAssertFalse(FileManager.default.fileExists(atPath: recoveryFile.path))
             await model.stopCore()
             try await model.installDownloadedRemoteSubscription(
                 Data(occupiedController.utf8), at: selected, subscription: replacementSource)

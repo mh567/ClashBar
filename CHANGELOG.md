@@ -1,3 +1,22 @@
+## v1.1.7
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.7-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 正在使用的订阅先验证运行结果，再替换本地配置文件，更新失败时保留原文件。
+
+### 📝 更新日志 (Changelog)
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **简化本地配置留存**。停止为每份配置写入常驻快照，并在旧快照可安全删除时清理。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **更新失败时恢复代理**。重启或写盘失败后，尝试恢复更新前实际可用的配置和设置。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **切换配置后的自动刷新**。下载期间切换配置时，过期的结果会跳过，下一轮检查可以重试。
+
+---
+
 ## v1.1.6
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.6-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

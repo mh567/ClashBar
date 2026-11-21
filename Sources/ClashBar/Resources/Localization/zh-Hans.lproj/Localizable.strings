@@ -464,6 +464,7 @@
 "app.config.apply.unverified" = "无法核实配置是否生效。";
 "app.config.apply.stale" = "操作期间所选配置已变更。";
 "app.config.apply.previous_restored" = "新配置应用失败，已恢复上次加载的版本。";
+"app.config.apply.recovery_failed" = "新配置应用失败，且未能恢复上次加载的版本。%@";
 "app.config.apply.restore_failed" = "恢复跟随配置失败：%@";
 "app.config.apply.partial" = "未确认生效的字段：%@";
 "app.config.apply.loaded" = "配置已加载";
@@ -480,4 +481,4 @@
 "ui.quick.runtime_config.geo_alias_conflict" = "Mihomo API 键名别名存在冲突：%@";
 "ui.quick.remote.validating" = "正在校验配置…";
 "ui.quick.remote.partially_applied" = "配置部分生效";
-"ui.quick.remote.apply_failed" = "已下载，配置应用失败";
+"ui.quick.remote.apply_failed" = "配置更新失败";

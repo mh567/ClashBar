@@ -92,7 +92,9 @@ extension AppViewModel {
     }
 
     @discardableResult
-    func restartCore(trigger: ProviderRefreshTrigger = .restart) async -> ConfigApplicationOutcome {
+    func restartCore(
+        trigger: ProviderRefreshTrigger = .restart, candidate: URL? = nil, commit: (() throws -> Void)? = nil
+    ) async -> ConfigApplicationOutcome {
         guard !self.isRemoteTarget, !self.isConfigMutationBusy else { return .skipped }
         self.coreActionState = .restarting
         self.configReadEpoch = UUID()
@@ -106,7 +108,7 @@ extension AppViewModel {
                 throw CocoaError(.fileNoSuchFile)
             }
             return try await self.launchSelectedConfig(
-                path: configPath, restarting: true,
+                path: configPath, restarting: true, candidate: candidate, commit: commit,
                 options: CoreBootstrapOptions(
                     providerTrigger: trigger,
                     refreshProxyGroupsAfterBootstrap: true,
@@ -122,10 +124,12 @@ extension AppViewModel {
     }
 
     private func launchSelectedConfig(
-        path: String, restarting: Bool, options: CoreBootstrapOptions
+        path: String, restarting: Bool, candidate staged: URL? = nil, commit: (() throws -> Void)? = nil,
+        options: CoreBootstrapOptions
     ) async throws -> ConfigApplicationOutcome {
         let target = URL(fileURLWithPath: path)
-        let replacement = self.pendingRemoteConfigReplacements[target.lastPathComponent]
+        let replacement = staged == nil ? self.pendingRemoteConfigReplacements[target.lastPathComponent] : nil
+        let originalData = replacement.flatMap { _ in try? Data(contentsOf: target) }
         defer {
             if let replacement, self.pendingRemoteConfigReplacements[target.lastPathComponent] == replacement {
                 self.discardRemoteConfigReplacement(for: target, failed: true)
@@ -137,20 +141,42 @@ extension AppViewModel {
         let recoveryPath = backup.flatMap { url in
             FileManager.default.fileExists(atPath: url.path) ? url.path : nil
         }
-        let fallback = recoveryPath ?? (replacement != nil ? path : nil)
+        let recoveryData = oldInput?.yaml.map { Data($0.utf8) } ?? (recoveryPath == nil ? originalData : nil)
         let currentSelection = self.configService.selectedConfig?.path
-        let candidate = replacement?.file(beside: target).path ?? path
+        let candidate = staged?.path ?? replacement?.file(beside: target).path ?? path
         let validation = await self.configValidationFailureDetails(configPath: candidate)
         guard currentSelection == self.configService.selectedConfig?.path else { throw ConfigApplicationError.stale }
         if let validation {
-            if replacement == nil { self.handleConfigValidationFailure(configPath: path, details: validation) }
+            if replacement == nil, staged == nil {
+                self.handleConfigValidationFailure(configPath: path, details: validation)
+            }
             if let oldInput, self.processManager.status == oldInput.status {
                 self.restoreConfigSelection(oldPath)
                 self.configApplicationFailure = validation
                 return .failed
             }
-            guard fallback != nil else { throw ConfigApplicationError.unverified }
+            guard recoveryPath != nil || recoveryData != nil else { throw ConfigApplicationError.unverified }
         }
+
+        let oldFile = URL(fileURLWithPath: oldPath)
+        var preparedRecovery: URL?
+        defer {
+            if let preparedRecovery { try? FileManager.default.removeItem(at: preparedRecovery) }
+        }
+        func prepareRecoveryFile(_ data: Data) throws -> URL {
+            let file = oldFile.deletingLastPathComponent().appendingPathComponent(".clashbar-\(UUID()).yaml")
+            try ConfigImportService.writePrivateConfigData(data, to: file)
+            return file
+        }
+        if let recoveryData, (try? Data(contentsOf: oldFile)) != recoveryData {
+            do {
+                preparedRecovery = try prepareRecoveryFile(recoveryData)
+            } catch {
+                if oldInput != nil { self.restoreConfigSelection(oldPath) }
+                throw error
+            }
+        }
+        let oldFields = await self.loadedConfigFields(for: oldInput)
 
         if restarting {
             await self.prepareCoreFeatureRecoveryBeforeCoreTransition(
@@ -167,22 +193,52 @@ extension AppViewModel {
             try await self.launchConfig(
                 candidate, selectedPath: path, restarting: restarting, replacing: replacement != nil)
             if let replacement {
-                guard self.configApplicationOutcome == .applied else { throw ConfigApplicationError.unverified }
+                try self.requireConfigApplied()
+                guard let originalData, (try? Data(contentsOf: target)) == originalData
+                else { throw ConfigApplicationError.stale }
                 try self.commitRemoteConfigReplacement(replacement, to: target)
+            }
+            if let commit {
+                try self.requireConfigApplied()
+                try commit()
             }
             await self.completeCoreBootstrap(configPath: path, options: options)
             return self.configApplicationOutcome
         } catch {
             let failure = self.configApplicationErrorMessage(error)
-            guard let fallback else {
-                if replacement != nil, self.processManager.isRunning {
+            guard recoveryPath != nil || recoveryData != nil else {
+                if (replacement != nil || staged != nil), self.processManager.isRunning {
                     await self.processManager.stop()
                 }
                 throw error
             }
             self.restoreConfigSelection(oldPath)
-            try await self.launchConfig(fallback, selectedPath: oldPath, restarting: self.processManager.isRunning)
-            self.configApplicationFailure = self.tr("app.config.apply.previous_restored") + " " + failure
+            do {
+                if let recoveryData {
+                    let recovery: URL
+                    if (try? Data(contentsOf: oldFile)) == recoveryData {
+                        recovery = oldFile
+                    } else if let preparedRecovery {
+                        recovery = preparedRecovery
+                    } else {
+                        recovery = try prepareRecoveryFile(recoveryData)
+                        preparedRecovery = recovery
+                    }
+                    try await self.launchConfig(
+                        recovery.path, selectedPath: oldPath, restarting: self.processManager.isRunning,
+                        overrides: oldInput?.overrides)
+                } else if let recoveryPath {
+                    try await self.launchConfig(
+                        recoveryPath, selectedPath: oldPath, restarting: self.processManager.isRunning)
+                }
+                try await self.requireRestoredConfig(matching: oldFields)
+            } catch {
+                self.runtimeConfigInput = nil
+                self.configApplicationLoaded = false
+                if self.processManager.isRunning { await self.processManager.stop() }
+                throw ConfigApplicationError.recoveryFailed(failure + " " + self.configApplicationErrorMessage(error))
+            }
+            self.reportRestoredConfig(after: failure)
             await self.completeCoreBootstrap(configPath: oldPath, options: options)
             return .failed
         }
@@ -198,7 +254,8 @@ extension AppViewModel {
     }
 
     private func launchConfig(
-        _ path: String, selectedPath: String, restarting: Bool, replacing: Bool = false
+        _ path: String, selectedPath: String, restarting: Bool, replacing: Bool = false,
+        overrides: [String: ConfigPatchValue]? = nil
     ) async throws {
         guard let yaml = RuntimeConfigInput.readYAML(at: path) else { throw CocoaError(.fileReadCorruptFile) }
         let controller = self.applyExternalControllerFromSelectedConfigFile(configPath: path)
@@ -210,7 +267,7 @@ extension AppViewModel {
             try await self.awaitConfigController(for: status)
             try await self.acknowledgeLoadedConfig(
                 at: selectedPath, yaml: yaml, status: status, controller: controller,
-                overrides: replacing ? [:] : nil, persistBackup: !replacing)
+                overrides: replacing ? [:] : overrides)
         } catch {
             if self.processManager.status == status {
                 await self.processManager.stop()
