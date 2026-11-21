@@ -2,171 +2,103 @@ import Foundation
 
 @MainActor
 extension AppViewModel {
-    enum EditableCoreSetting: String, CaseIterable, Identifiable {
-        case allowLan = "allow-lan"
-        case ipv6
-        case tcpConcurrent = "tcp-concurrent"
-        case logLevel = "log-level"
-
-        var id: String {
-            self.rawValue
-        }
-
-        var configKey: String {
-            self.rawValue
-        }
+    var pendingCoreSettingsCount: Int {
+        self.coreSettingsEdits.count + self.coreSettingsRestores.count
     }
 
-    private func boolStateKeyPath(for setting: EditableCoreSetting) -> ReferenceWritableKeyPath<AppViewModel, Bool>? {
-        switch setting {
-        case .allowLan:
-            \.settingsAllowLan
-        case .ipv6:
-            \.settingsIPv6
-        case .tcpConcurrent:
-            \.settingsTCPConcurrent
-        case .logLevel:
-            nil
-        }
+    var canApplyCoreSettings: Bool {
+        !self.isApplyingCoreSettings && !self.isConfigMutationBusy && (self.isRemoteTarget || self.isRuntimeRunning)
     }
 
-    private func stringStateKeyPath(for setting: EditableCoreSetting)
-    -> ReferenceWritableKeyPath<AppViewModel, String>? {
-        switch setting {
-        case .logLevel:
-            \.settingsLogLevel
-        case .allowLan, .ipv6, .tcpConcurrent:
-            nil
+    func coreSettingValue(_ field: ConfigOverrideField) -> ConfigPatchValue? {
+        if self.coreSettingsRestores.contains(field.rawValue) {
+            return self.configBaselineFields[field.rawValue]
         }
+        return self.coreSettingsEdits[field] ?? self.runtimeValue(for: field)
     }
 
-    func boolValue(for setting: EditableCoreSetting) -> Bool {
-        guard let keyPath = self.boolStateKeyPath(for: setting) else {
-            assertionFailure("Setting \(setting.configKey) does not store a Bool")
-            return false
+    func stageCoreSetting(_ field: ConfigOverrideField, value: ConfigPatchValue) {
+        guard !self.isApplyingCoreSettings else { return }
+        self.coreSettingsRestores.remove(field.rawValue)
+        let runtime = self.runtimeValue(for: field)
+        if field.group == .ports, case let .string(text) = value, case let .string(current)? = runtime {
+            let parsed = ProxyPortsDraft.parsedPort(text)
+            self.coreSettingsEdits[field] = parsed != nil && parsed == ProxyPortsDraft.parsedPort(current)
+                ? nil : value
+        } else {
+            self.coreSettingsEdits[field] = ConfigOverrides.matches(value, runtime) ? nil : value
         }
-        return self[keyPath: keyPath]
+        self.coreSettingsError = nil
     }
 
-    func stringValue(for setting: EditableCoreSetting) -> String {
-        guard let keyPath = self.stringStateKeyPath(for: setting) else {
-            assertionFailure("Setting \(setting.configKey) does not store a String")
-            return ""
-        }
-        return self[keyPath: keyPath]
+    func stageCoreSettingsRestore(_ keys: Set<String>) {
+        guard self.canRestoreConfigField else { return }
+        let overridden = keys.intersection(self.activeConfigOverrides.keys)
+        self.coreSettingsRestores.formUnion(overridden)
+        self.coreSettingsEdits = self.coreSettingsEdits.filter { !overridden.contains($0.key.rawValue) }
+        self.coreSettingsError = nil
     }
 
-    func applyEditableCoreSetting(_ setting: EditableCoreSetting, to value: Bool) async {
-        guard let keyPath = self.boolStateKeyPath(for: setting) else {
-            assertionFailure("Setting \(setting.configKey) does not accept Bool updates")
-            return
-        }
-        await self.applyBooleanSetting(keyPath, configKey: setting.configKey, value: value)
+    func undoCoreSettingRestore(_ field: ConfigOverrideField) {
+        guard !self.isApplyingCoreSettings else { return }
+        self.coreSettingsRestores.remove(field.rawValue)
+        self.coreSettingsError = nil
     }
 
-    func applyEditableCoreSetting(_ setting: EditableCoreSetting, to value: String) async {
-        guard self.stringStateKeyPath(for: setting) != nil else {
-            assertionFailure("Setting \(setting.configKey) does not accept String updates")
-            return
-        }
-
-        let normalized = value.trimmed
-        if setting == .logLevel, ConfigLogLevel(rawValue: normalized) == nil {
-            settingsErrorMessage = tr("app.settings.error.invalid_log_level", value)
-            settingsSavedMessage = nil
-            return
-        }
-
-        await self.patchSingleConfig(setting.configKey, value: .string(normalized))
+    func discardCoreSettings() {
+        self.coreSettingsEdits = [:]
+        self.coreSettingsRestores = []
+        self.coreSettingsError = nil
     }
 
-    func applyProxyPorts() async {
-        guard !self.editedProxyPorts.isEmpty else { return }
-        if self.isConfigMutationBusy {
-            self.scheduleProxyPortsAutoSaveIfNeeded()
-            return
-        }
-
-        let fields = self.proxyPortFields.compactMap { field in
-            self.editedProxyPorts[field.key].map { SettingsPortField(key: field.key, value: $0) }
-        }
-        // A field that was opened and left unchanged must not be written back:
-        // patching an identical value would still record a manual override.
-        let changed = ProxyPortsDraft.changedFields(fields, from: self.lastSyncedEditableSettings)
-        let edited = fields.filter { changed.contains($0.key) }
-        for field in fields where !changed.contains(field.key) {
-            self.editedProxyPorts.removeValue(forKey: field.key)
-        }
-        guard !edited.isEmpty else { return }
-
-        // Auto-save is silent, so it waits for every edited field to parse. A
-        // half-typed value keeps its draft and the rest retries on the next edit
-        // instead of being dropped.
-        guard ProxyPortsDraft.isAutoSavable(edited),
-              let body = self.validatedPortPatchBody(
-                  fields: edited,
-                  errorMessageKey: "app.settings.error.port_range")
+    func applyCoreSettings() async {
+        guard self.pendingCoreSettingsCount > 0, self.canApplyCoreSettings,
+              self.coreSettingsRestores.isEmpty || self.canRestoreConfigField
         else { return }
 
-        for field in edited {
-            self.editedProxyPorts.removeValue(forKey: field.key)
+        var values: [String: ConfigPatchValue] = [:]
+        for field in ConfigOverrideField.allCases {
+            guard let edit = self.coreSettingsEdits[field] else { continue }
+            if field.group == .ports {
+                guard case let .string(text) = edit, let port = ProxyPortsDraft.parsedPort(text) else {
+                    self.coreSettingsError = self.tr("ui.settings.core.invalid_port", self.tr(field.titleKey))
+                    return
+                }
+                values[field.rawValue] = .int(port)
+            } else {
+                values[field.rawValue] = edit
+            }
         }
-        await self.patchConfigBody(
-            body, syncingKey: "ports-auto", successMessage: tr("app.settings.saved.ports_auto"))
-    }
 
-    func scheduleProxyPortsAutoSaveIfNeeded() {
-        guard !suppressSettingsPersistence else { return }
-        guard settingsSyncingKey == nil else {
-            self.proxyPortsAutoSavePending = true
+        if values[ConfigOverrideField.tunStack.rawValue] == .string("mips"), !self.isMipsStackSupported {
+            self.coreSettingsError = self.tr("app.tun.mips_requires_upgrade", Self.mipsStackMinimumCoreVersion)
             return
         }
+        self.isApplyingCoreSettings = true
+        self.coreSettingsError = nil
+        self.settingsSavedMessage = nil
+        defer { self.isApplyingCoreSettings = false }
 
-        self.proxyPortsAutoSavePending = false
-        proxyPortsAutoSaveTask?.cancel()
-        proxyPortsAutoSaveTask = Task { [weak self] in
+        if self.coreSettingsRestores.isEmpty {
+            let success = await self.patchConfigBody(
+                values, syncingKey: self.tr("ui.settings.section.core"),
+                successMessage: self.tr("ui.settings.core.applied"), isCoreSettingsBatch: true)
+            guard success else {
+                self.coreSettingsError = self.settingsErrorMessage ?? self.tr("app.config.apply.unverified")
+                self.settingsErrorMessage = nil
+                return
+            }
+        } else {
             do {
-                try await Task.sleep(nanoseconds: 750_000_000)
+                try await self.applyCoreSettingsRestores(self.coreSettingsRestores, edits: values)
+                self.settingsSavedMessage = self.tr("ui.settings.core.applied")
+                self.scheduleSettingsFeedbackAutoClearIfNeeded(message: self.tr("ui.settings.core.applied"))
             } catch {
+                self.coreSettingsError = self.configApplicationErrorMessage(error)
                 return
             }
-
-            guard let self else { return }
-            if Task.isCancelled {
-                return
-            }
-            self.proxyPortsAutoSaveTask = nil
-            await self.applyProxyPorts()
         }
-    }
-
-    func cancelProxyPortsAutoSave() {
-        self.cancelProxyPortsAutoSaveTask()
-        self.proxyPortsAutoSavePending = false
-    }
-
-    func cancelProxyPortsAutoSaveTask() {
-        proxyPortsAutoSaveTask?.cancel()
-        proxyPortsAutoSaveTask = nil
-    }
-
-    func flushProxyPortsAutoSaveIfNeeded() {
-        guard self.proxyPortsAutoSaveTask != nil || self.proxyPortsAutoSavePending else { return }
-        self.cancelProxyPortsAutoSave()
-
-        Task { [weak self] in
-            guard let self else { return }
-            await self.applyProxyPorts()
-        }
-    }
-
-    func retryPendingProxyPortsAutoSaveIfNeeded() {
-        guard self.proxyPortsAutoSavePending else { return }
-        guard !self.editedProxyPorts.isEmpty else {
-            self.proxyPortsAutoSavePending = false
-            return
-        }
-        self.scheduleProxyPortsAutoSaveIfNeeded()
+        self.discardCoreSettings()
     }
 
     func syncEditableSettings(from config: ConfigSnapshot) {

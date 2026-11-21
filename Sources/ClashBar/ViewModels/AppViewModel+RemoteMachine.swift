@@ -11,8 +11,9 @@ extension AppViewModel {
         }
 
         guard !self.isConfigMutationBusy, self.remoteMachineStore.activeTarget == previous else { return }
-        self.cancelProxyPortsAutoSave()
-        self.editedProxyPorts = [:]
+        if previous != target {
+            self.discardCoreSettings()
+        }
         self.configReadEpoch = UUID()
         self.remoteMachineStore.selectTarget(target)
 

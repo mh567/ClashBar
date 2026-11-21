@@ -363,9 +363,6 @@ extension AppViewModel {
         self.startupRefreshTask = nil
         self.autoStartTask?.cancel()
         self.autoStartTask = nil
-        self.proxyPortsAutoSaveTask?.cancel()
-        self.proxyPortsAutoSaveTask = nil
-        self.proxyPortsAutoSavePending = false
         self.settingsFeedbackClearTask?.cancel()
         self.settingsFeedbackClearTask = nil
         self.coreUpgradeFeedbackClearTask?.cancel()

@@ -5,6 +5,63 @@ import XCTest
 
 final class ConfigApplicationIntegrationTests: XCTestCase {
     @MainActor
+    func testCoreSettingsApplyEditsAndRestoresTogether() async throws {
+        try await self.withRunningCore { model, selected, _, _, next, occupied in
+            let original = try await model.fetchRuntimeConfigSnapshot()
+            let status = model.processManager.status
+            model.stageCoreSetting(.logLevel, value: .string("debug"))
+            model.stageCoreSetting(.mixedPort, value: .string("65536"))
+            await model.applyCoreSettings()
+            XCTAssertNotNil(model.coreSettingsError)
+            XCTAssertEqual(model.pendingCoreSettingsCount, 2)
+            let beforeApply = try await model.fetchRuntimeConfigSnapshot()
+            XCTAssertEqual(beforeApply.overrideFields, original.overrideFields)
+            XCTAssertTrue(model.activeConfigOverrides.isEmpty)
+
+            model.stageCoreSetting(.mixedPort, value: .string(String(next)))
+            model.stageCoreSetting(.tunStack, value: .string("system"))
+            await model.applyCoreSettings()
+            XCTAssertNil(model.coreSettingsError)
+            XCTAssertEqual(model.pendingCoreSettingsCount, 0)
+            XCTAssertEqual(model.activeConfigOverrides, [
+                "log-level": .string("debug"), "mixed-port": .int(next), "tun.stack": .string("system"),
+            ])
+            XCTAssertEqual(model.processManager.status, status)
+
+            model.stageCoreSetting(.logLevel, value: .string("error"))
+            model.stageCoreSetting(.mixedPort, value: .string(String(occupied)))
+            await model.applyCoreSettings()
+            XCTAssertNotNil(model.coreSettingsError)
+            XCTAssertEqual(model.pendingCoreSettingsCount, 2)
+            let afterFailure = try await model.fetchRuntimeConfigSnapshot()
+            XCTAssertEqual(afterFailure.logLevel, "debug")
+            XCTAssertEqual(afterFailure.mixedPort, next)
+            model.discardCoreSettings()
+
+            await model.patchSingleConfig("mode", value: .string("global"))
+            model.stageCoreSettingsRestore(Set(model.activeConfigOverrides.keys))
+            model.stageCoreSetting(.logLevel, value: .string("info"))
+            let beforeRestore = try await model.fetchRuntimeConfigSnapshot()
+            XCTAssertEqual(beforeRestore.mixedPort, next)
+            XCTAssertEqual(beforeRestore.logLevel, "debug")
+            XCTAssertEqual(beforeRestore.tun?.stack?.lowercased(), "system")
+            await model.applyCoreSettings()
+            XCTAssertNil(model.coreSettingsError)
+            XCTAssertEqual(model.pendingCoreSettingsCount, 0)
+            XCTAssertEqual(model.activeConfigOverrides, ["log-level": .string("info")])
+            XCTAssertEqual(model.processManager.status, status)
+
+            let restored = try await model.fetchRuntimeConfigSnapshot()
+            XCTAssertEqual(restored.mixedPort, original.mixedPort)
+            XCTAssertEqual(restored.tun?.stack, original.tun?.stack)
+            XCTAssertEqual(restored.logLevel, "info")
+            XCTAssertEqual(restored.mode, "global")
+            XCTAssertEqual(model.runtimeConfigInput?.yaml, try String(contentsOf: selected, encoding: .utf8))
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
     func testRestartRecoversWhenCommitDirectoryBecomesReadOnly() async throws {
         try XCTSkipIf(geteuid() == 0, "Directory permissions must restrict the test process.")
         try await self.withRunningCore { model, selected, _, _, next, _ in
@@ -71,7 +128,8 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
                     XCTAssertEqual(model.activeConfigOverrides["tun.enable"], .bool(true))
                 }
             }
-            await model.restoreConfigField("log-level")
+            model.stageCoreSettingsRestore(["log-level"])
+            await model.applyCoreSettings()
             XCTAssertNil(model.activeConfigOverrides["log-level"])
             XCTAssertEqual(model.activeConfigOverrides["tun.enable"], .bool(true))
             XCTAssertTrue(model.configApplicationIssues.contains("tun.enable"))
@@ -167,8 +225,9 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
 
             try original.write(to: selected, atomically: true, encoding: .utf8)
             XCTAssertFalse(model.isConfigMutationBusy)
-            await model.restoreConfigField("log-level")
-            XCTAssertTrue(model.activeConfigOverrides.isEmpty, model.settingsErrorMessage ?? "No restore error")
+            model.stageCoreSettingsRestore(["log-level"])
+            await model.applyCoreSettings()
+            XCTAssertTrue(model.activeConfigOverrides.isEmpty, model.coreSettingsError ?? "No restore error")
             XCTAssertEqual(model.runtimeConfigInput?.yaml, accepted)
             XCTAssertEqual(try String(contentsOf: selected, encoding: .utf8), original)
             await model.stopCore()
@@ -283,7 +342,8 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             XCTAssertNil(model.configApplicationFailure)
             try updated.write(to: selected, atomically: true, encoding: .utf8)
             await model.reloadConfig()
-            await model.restoreConfigField("mixed-port")
+            model.stageCoreSettingsRestore(["mixed-port"])
+            await model.applyCoreSettings()
 
             let unbindable = Self.config(controller: controller, mixedPort: occupied)
             try unbindable.write(to: selected, atomically: true, encoding: .utf8)
@@ -316,7 +376,9 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             XCTAssertNotNil(model.configApplicationFailure)
             try updated.write(to: selected, atomically: true, encoding: .utf8)
 
-            await model.restoreConfigField("log-level")
+            model.stageCoreSettingsRestore(["log-level"])
+
+            await model.applyCoreSettings()
             let restored = try await model.fetchRuntimeConfigSnapshot()
             XCTAssertEqual(restored.logLevel, "warning")
             XCTAssertTrue(model.activeConfigOverrides.isEmpty)
@@ -326,7 +388,8 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             XCTAssertEqual(configuredStack.tunEnabled, false)
             XCTAssertEqual(configuredStack.tun?.stack?.lowercased(), "system")
             XCTAssertEqual(model.activeConfigOverrides, ["tun.stack": .string("system")])
-            await model.restoreConfigField("tun.stack")
+            model.stageCoreSettingsRestore(["tun.stack"])
+            await model.applyCoreSettings()
             XCTAssertTrue(model.activeConfigOverrides.isEmpty)
 
             let phaseName = selected.lastPathComponent
@@ -334,7 +397,8 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             await model.reloadRefreshedRemoteConfig(named: phaseName)
             XCTAssertEqual(model.remoteConfigMenuState(for: phaseName).phase, .partiallyApplied)
             XCTAssertEqual(model.activeConfigOverrides["tun.enable"], .bool(true))
-            await model.restoreConfigField("tun.enable")
+            model.stageCoreSettingsRestore(["tun.enable"])
+            await model.applyCoreSettings()
             XCTAssertTrue(model.activeConfigOverrides.isEmpty)
 
             model.lastCoreFailureAlertKey = "core-restart-failed"

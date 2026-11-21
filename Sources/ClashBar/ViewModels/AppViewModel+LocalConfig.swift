@@ -60,8 +60,9 @@ extension AppViewModel {
             }
         }
 
-        self.cancelProxyPortsAutoSave()
-        self.editedProxyPorts = [:]
+        if !self.isRemoteTarget, previousCanonicalPath != nextCanonicalPath {
+            self.discardCoreSettings()
+        }
         let nextSelectedPath = self.syncSelectedConfigSelection(configService.selectedConfig)
         syncConfigDisplayState()
 
@@ -100,8 +101,9 @@ extension AppViewModel {
         }
 
         guard !self.isConfigMutationBusy else { return }
-        self.cancelProxyPortsAutoSave()
-        self.editedProxyPorts = [:]
+        if !self.isRemoteTarget, previousCanonicalPath != targetCanonicalPath {
+            self.discardCoreSettings()
+        }
         configService.selectConfig(matched)
         let nextSelectedPath = self.syncSelectedConfigSelection(matched)
         syncConfigDisplayState()

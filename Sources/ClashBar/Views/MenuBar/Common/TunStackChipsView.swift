@@ -14,6 +14,8 @@ struct TunStackChipsView: TranslatingView {
     /// Caller-specific extra gate (for example a settings page that is mid-sync).
     /// The core availability check lives inside, so both call sites agree.
     var isInteractionEnabled: Bool = true
+    var selection: String?
+    var stagesChanges = false
     let onSelect: (String) -> Void
 
     static let options = ["system", "gvisor", "mixed", "mips"]
@@ -27,8 +29,8 @@ struct TunStackChipsView: TranslatingView {
     }
 
     func chip(_ option: String) -> some View {
-        let active = self.isTunEnabled
-            && self.appViewModel.tunStack?.caseInsensitiveCompare(option) == .orderedSame
+        let active = (self.isTunEnabled || self.stagesChanges)
+            && (self.selection ?? self.appViewModel.tunStack)?.caseInsensitiveCompare(option) == .orderedSame
         let mipsUnsupported = option.caseInsensitiveCompare("mips") == .orderedSame
             && !self.appViewModel.isMipsStackSupported
         let enabled = self.isInteractionEnabled
@@ -36,7 +38,7 @@ struct TunStackChipsView: TranslatingView {
             && !mipsUnsupported
         let hint = mipsUnsupported
             ? self.tr("app.tun.mips_requires_upgrade", AppViewModel.mipsStackMinimumCoreVersion)
-            : self.tr("ui.quick.tun_stack_switch_hint")
+            : self.tr(self.stagesChanges ? "ui.settings.core.select_stack" : "ui.quick.tun_stack_switch_hint")
         let fill = active ? self.nativePositive.opacity(T.Opacity.tint) : self.nativeBadgeFill
         let border = active
             ? self.nativePositive.opacity(0.18)
@@ -64,7 +66,7 @@ struct TunStackChipsView: TranslatingView {
             }
             .contentShape(Capsule(style: .continuous))
             .opacity(enabled ? 1 : 0.5)
-            .onTapGesture(count: 2, perform: activate)
+            .onTapGesture(count: self.stagesChanges ? 1 : 2, perform: activate)
             .menuBarHover(cornerRadius: T.rowHeight / 2)
             .disabled(!enabled)
             .help(hint)

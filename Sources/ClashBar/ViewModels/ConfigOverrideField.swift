@@ -194,10 +194,10 @@ extension AppViewModel {
     }
 
     var canRestoreConfigField: Bool {
-        !self.isConfigMutationBusy && (self.isRemoteTarget || self.isRuntimeRunning)
+        self.canApplyCoreSettings && self.loadedConfigForSettingsRestore != nil
     }
 
-    private func runtimeValue(for field: ConfigOverrideField) -> ConfigPatchValue? {
+    func runtimeValue(for field: ConfigOverrideField) -> ConfigPatchValue? {
         switch field {
         case .allowLan:
             .bool(self.settingsAllowLan)

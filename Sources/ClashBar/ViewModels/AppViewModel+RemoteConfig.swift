@@ -163,6 +163,11 @@ extension AppViewModel {
         }
         try self.writeConfigData(data, to: target)
         self.removeConfigOverrides(at: target)
+        if !self.isRemoteTarget, self.configService.selectedConfig.map(ConfigOverrides.pathKey(for:))
+            == ConfigOverrides.pathKey(for: target)
+        {
+            self.discardCoreSettings()
+        }
         try? FileManager.default.removeItem(at: replacement.file(beside: target))
         self.configOverrides.identities[ConfigOverrides.pathKey(for: target)] = replacement.identity
         self.persistConfigOverrides()
@@ -527,6 +532,9 @@ extension AppViewModel {
     @discardableResult
     func syncSelectedConfigSelection(_ selected: URL?) -> String? {
         self.configDirectoryMonitor?.updateSelectedFile(selected)
+        if !self.isRemoteTarget, selected?.lastPathComponent != self.selectedConfigName {
+            self.discardCoreSettings()
+        }
         guard let selected else { return nil }
         selectedConfigName = selected.lastPathComponent
         defaults.set(selected.lastPathComponent, forKey: selectedConfigKey)

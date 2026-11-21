@@ -112,11 +112,11 @@ struct LogsTabView: TranslatingView {
     }
 
     var coreLogLevelMenu: some View {
-        let current = ConfigLogLevel(rawValue: self.appViewModel.stringValue(for: .logLevel)) ?? .info
+        let current = ConfigLogLevel(rawValue: self.appViewModel.settingsLogLevel) ?? .info
         return Menu {
             ForEach(ConfigLogLevel.allCases, id: \.rawValue) { level in
                 Button {
-                    Task { await self.appViewModel.applyEditableCoreSetting(.logLevel, to: level.rawValue) }
+                    Task { await self.appViewModel.patchSingleConfig("log-level", value: .string(level.rawValue)) }
                 } label: {
                     if current == level {
                         Label(level.rawValue, systemImage: "checkmark")

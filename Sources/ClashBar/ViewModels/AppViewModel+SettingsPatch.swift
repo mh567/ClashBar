@@ -31,10 +31,6 @@ extension AppViewModel {
         suppressSettingsPersistence = false
     }
 
-    func applySettingBool(key: String, value: Bool) async {
-        await self.patchSingleConfig(key, value: .bool(value))
-    }
-
     func patchSingleConfig(_ key: String, value: ConfigPatchValue) async {
         _ = await self.patchConfigBody(
             [key: value],
@@ -47,7 +43,7 @@ extension AppViewModel {
         _ body: [String: ConfigPatchValue],
         syncingKey: String,
         successMessage: String,
-        syncSystemProxyPort: Bool = true) async -> Bool
+        isCoreSettingsBatch: Bool = false) async -> Bool
     {
         guard !self.isConfigMutationBusy, self.isRemoteTarget || self.isRuntimeRunning else { return false }
         let overrideID = self.activeConfigOverrideID
@@ -60,22 +56,33 @@ extension AppViewModel {
         defer {
             self.configReadEpoch = UUID()
             settingsSyncingKey = nil
-            self.retryPendingProxyPortsAutoSaveIfNeeded()
         }
-        let shouldSyncSystemProxyPort = syncSystemProxyPort && !self.isRemoteTarget && body.keys.contains { key in
+        let shouldSyncSystemProxyPort = !self.isRemoteTarget && body.keys.contains { key in
             key == "mixed-port" || key == "port" || key == "socks-port"
         }
         let previousSystemProxyPorts =
             await previousSystemProxyPortsForSyncIfNeeded(shouldSync: shouldSyncSystemProxyPort)
 
         let patchKeysDescription = body.keys.sorted().joined(separator: ", ")
+        var expected = body
+        var baseline: ConfigSnapshot?
+        var didSendPatch = false
         do {
+            if isCoreSettingsBatch {
+                baseline = try await self.fetchRuntimeConfigSnapshot()
+                let enableKey = ConfigOverrideField.tunEnable.rawValue
+                if body[ConfigOverrideField.tunStack.rawValue] != nil, body[enableKey] == nil {
+                    expected[enableKey] = baseline?.tunEnabled.map(ConfigPatchValue.bool)
+                }
+            }
+            let request = try await self.coreSettingsPatch(body, baseline: baseline)
             ensureAPIClient()
             appendLog(level: "info", message: "PATCH /configs [\(patchKeysDescription)]")
-            try await self.clientOrThrow().requestNoResponse(.patchConfigs(body: body.mapValues(\.jsonValue)))
+            didSendPatch = true
+            try await self.clientOrThrow().requestNoResponse(.patchConfigs(body: request))
             appendLog(level: "info", message: "PATCH /configs succeeded [\(patchKeysDescription)]")
             let observed = try await self.fetchRuntimeConfigSnapshot()
-            guard body.allSatisfy({ ConfigOverrides.matches($0.value, observed.overrideFields[$0.key]) }) else {
+            guard expected.allSatisfy({ ConfigOverrides.matches($0.value, observed.overrideFields[$0.key]) }) else {
                 throw ConfigApplicationError.unverified
             }
             self.recordConfigOverrides(body, for: overrideID)
@@ -89,13 +96,50 @@ extension AppViewModel {
             appendLog(
                 level: "error",
                 message: "PATCH /configs failed [\(patchKeysDescription)]: \(error.localizedDescription)")
-            self.settingsErrorMessage = tr(
-                "app.settings.error.save_failed", syncingKey, self.configApplicationErrorMessage(error))
+            var detail = self.configApplicationErrorMessage(error)
+            if didSendPatch, let baseline {
+                do {
+                    try await self.restoreSettingsPatch(matching: baseline, keys: Set(expected.keys))
+                } catch {
+                    detail = self.tr("app.config.apply.recovery_failed", detail)
+                }
+            }
+            self.settingsErrorMessage = tr("app.settings.error.save_failed", syncingKey, detail)
             settingsSavedMessage = nil
             await refreshFromAPI(includeSlowCalls: false)
             await self.reconcileEditableSettingsWithRuntimeConfig()
             return false
         }
+    }
+
+    private func coreSettingsPatch(
+        _ fields: [String: ConfigPatchValue], baseline: ConfigSnapshot?
+    ) async throws -> [String: JSONValue] {
+        let stack = fields[ConfigOverrideField.tunStack.rawValue]
+        let enabled = fields[ConfigOverrideField.tunEnable.rawValue]
+        if stack != nil || enabled != nil {
+            guard let desired = enabled ?? baseline?.tunEnabled.map(ConfigPatchValue.bool) else {
+                throw ConfigApplicationError.unverified
+            }
+            if desired == .bool(true), !self.isRemoteTarget {
+                try await self.ensureTunPermissions(requestIfMissing: true)
+            }
+        }
+        return ConfigOverrides.request(for: fields, tunEnabled: baseline?.tunEnabled).mapValues(\.jsonValue)
+    }
+
+    private func restoreSettingsPatch(matching baseline: ConfigSnapshot, keys: Set<String>) async throws {
+        let previous = baseline.overrideFields.filter { keys.contains($0.key) }
+        let observed = try? await self.fetchRuntimeConfigSnapshot().overrideFields
+        let changes = previous.filter { !ConfigOverrides.matches($0.value, observed?[$0.key]) }
+        if !changes.isEmpty {
+            let body = ConfigOverrides.request(for: changes, tunEnabled: baseline.tunEnabled)
+            try await self.clientOrThrow().requestNoResponse(.patchConfigs(body: body.mapValues(\.jsonValue)))
+        }
+        let restored = try await self.fetchRuntimeConfigSnapshot().overrideFields
+        guard previous.count == keys.count,
+              previous.allSatisfy({ ConfigOverrides.matches($0.value, restored[$0.key]) })
+        else { throw ConfigApplicationError.unverified }
     }
 
     func scheduleSettingsFeedbackAutoClearIfNeeded(message: String) {
@@ -155,14 +199,6 @@ extension AppViewModel {
         }
     }
 
-    func applyBooleanSetting(
-        _ keyPath: ReferenceWritableKeyPath<AppViewModel, Bool>,
-        configKey: String,
-        value: Bool) async
-    {
-        await self.applySettingBool(key: configKey, value: value)
-    }
-
     func reconcileEditableSettingsWithRuntimeConfig() async {
         do {
             let config = try await self.fetchRuntimeConfigSnapshot()
@@ -173,36 +209,6 @@ extension AppViewModel {
         } catch {
             appendLog(level: "error", message: "Settings reconciliation failed: \(error.localizedDescription)")
         }
-    }
-
-    var proxyPortFields: [SettingsPortField] {
-        [
-            SettingsPortField(key: "port", value: settingsPort),
-            SettingsPortField(key: "socks-port", value: settingsSocksPort),
-            SettingsPortField(key: "mixed-port", value: settingsMixedPort),
-            SettingsPortField(key: "redir-port", value: settingsRedirPort),
-            SettingsPortField(key: "tproxy-port", value: settingsTProxyPort),
-        ]
-    }
-
-    func validatedPortPatchBody(
-        fields: [SettingsPortField],
-        errorMessageKey: String) -> [String: ConfigPatchValue]?
-    {
-        var body: [String: ConfigPatchValue] = [:]
-
-        for field in fields {
-            let trimmedValue = field.value.trimmed
-            guard let intValue = Int(trimmedValue), (0...65535).contains(intValue) else {
-                settingsErrorMessage = tr(errorMessageKey, field.key)
-                settingsSavedMessage = nil
-                return nil
-            }
-
-            body[field.key] = .int(intValue)
-        }
-
-        return body
     }
 
     func syncEditableFields<Value: Equatable>(

@@ -5,6 +5,7 @@ enum ConfigApplicationError: Error {
     case unverified
     case stale
     case recoveryFailed(String)
+    case restoreFailed(String)
     case fields([String])
 }
 

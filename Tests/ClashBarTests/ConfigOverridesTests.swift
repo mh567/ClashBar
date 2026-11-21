@@ -175,13 +175,36 @@ final class ConfigOverridesTests: XCTestCase {
     }
 
     @MainActor
+    func testCoreSettingsDraftSurvivesPanelCloseAndDiscardKeepsLiveValues() {
+        let model = self.makeIsolatedModel()
+        model.setPanelVisibility(true)
+        model.stageCoreSetting(.allowLan, value: .bool(true))
+        model.stageCoreSetting(.mixedPort, value: .string("7891"))
+        model.setPanelVisibility(false)
+
+        XCTAssertEqual(model.pendingCoreSettingsCount, 2)
+        XCTAssertEqual(model.coreSettingValue(.allowLan), .bool(true))
+        XCTAssertFalse(model.settingsAllowLan)
+        XCTAssertEqual(model.settingsMixedPort, "7890")
+        XCTAssertTrue(model.configOverrides.values.isEmpty)
+
+        model.stageCoreSetting(.allowLan, value: .bool(false))
+        XCTAssertEqual(model.pendingCoreSettingsCount, 1)
+        model.discardCoreSettings()
+        XCTAssertEqual(model.pendingCoreSettingsCount, 0)
+        XCTAssertEqual(model.coreSettingValue(.mixedPort), .string("7890"))
+    }
+
+    @MainActor
     func testRestoreAllIsANoOpWithoutLoadedConfig() async {
         let model = self.makeIsolatedModel()
         let id = UUID()
         model.configOverrides.identities["/config/a.yaml"] = id
         model.configOverrides.values[id] = ["mixed-port": .int(7891)]
 
-        await model.restoreAllConfigFields()
+        model.stageCoreSettingsRestore(["mixed-port"])
+        XCTAssertEqual(model.pendingCoreSettingsCount, 0)
+        await model.applyCoreSettings()
 
         XCTAssertEqual(model.configOverrides.values[id], ["mixed-port": .int(7891)])
     }
@@ -199,11 +222,21 @@ final class ConfigOverridesTests: XCTestCase {
             "ui.settings.overrides.status.unconfirmed_short",
             "ui.settings.overrides.status.following_short",
             "ui.settings.overrides.status.chip_named",
-            "ui.settings.overrides.status.following",
             "ui.settings.overrides.item.restore_help_with_declared",
             "ui.settings.overrides.restore_all",
-            "ui.settings.overrides.restore_all_confirm.title",
-            "ui.settings.overrides.restore_all_confirm.message",
+            "ui.settings.core.apply",
+            "ui.settings.core.discard",
+            "ui.settings.core.pending",
+            "ui.settings.core.applying",
+            "ui.settings.core.applied",
+            "ui.settings.core.reload_hint",
+            "ui.settings.core.restore_all_help",
+            "ui.settings.core.restore_pending",
+            "ui.settings.core.edit_pending",
+            "ui.settings.core.undo_restore",
+            "ui.settings.core.select_stack",
+            "ui.settings.core.invalid_port",
+            "ui.settings.exceptions.retry",
             "ui.settings.overrides.item.restore_help",
             "ui.settings.section.app",
             "ui.settings.section.core",

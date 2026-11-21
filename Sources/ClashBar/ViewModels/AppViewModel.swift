@@ -230,11 +230,12 @@ final class AppViewModel: ObservableObject {
     @Published var settingsTProxyPort: String = "0"
 
     @Published var configOverrides = ConfigOverrides()
-    @Published var editedProxyPorts: [String: String] = [:]
+    @Published var coreSettingsEdits: [ConfigOverrideField: ConfigPatchValue] = [:]
+    @Published var coreSettingsRestores: Set<String> = []
+    @Published var isApplyingCoreSettings = false
+    @Published var coreSettingsError: String?
+    @Published var systemProxyExceptionsError: String?
     @Published var settingsSyncingKey: String?
-    var isCoreSettingSyncing: Bool {
-        self.settingsSyncingKey != nil
-    }
 
     @Published var settingsErrorMessage: String?
     @Published var settingsSavedMessage: String?
@@ -383,8 +384,6 @@ final class AppViewModel: ObservableObject {
     var mediumFrequencyTask: Task<Void, Never>?
     var lowFrequencyTask: Task<Void, Never>?
     let streamCoordinator = StreamCoordinator()
-    var proxyPortsAutoSaveTask: Task<Void, Never>?
-    var proxyPortsAutoSavePending = false
     var settingsFeedbackClearTask: Task<Void, Never>?
     var providerRefreshTask: Task<Void, Never>?
     var networkAutoStopTask: Task<Void, Never>?

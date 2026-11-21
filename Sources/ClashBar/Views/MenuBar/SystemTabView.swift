@@ -35,6 +35,7 @@ struct SystemTabView: TranslatingView {
     @EnvironmentObject var appViewModel: AppViewModel
     @State private var section: SettingsSection = .app
     @State private var isExceptionsExpanded = false
+    @FocusState private var focusedProxyException: EditableSystemProxyException.ID?
 
     func settingsCardHeader(_ title: String) -> some View {
         HStack(spacing: T.space6) {
@@ -186,12 +187,30 @@ struct SystemTabView: TranslatingView {
                 self.coreSettingsSection
             }
         }
+        .onChange(of: self.focusedProxyException) { [focusedProxyException] _ in
+            if focusedProxyException != nil {
+                Task { await self.appViewModel.saveSystemProxyExceptions() }
+            }
+        }
+        .onDisappear {
+            if self.focusedProxyException != nil {
+                Task { await self.appViewModel.saveSystemProxyExceptions() }
+            }
+        }
+        .onChange(of: self.appViewModel.isConfigMutationBusy) { busy in
+            if !busy, self.section == .app, self.focusedProxyException == nil,
+               self.appViewModel.systemProxyExceptionsError == nil
+            {
+                Task { await self.appViewModel.saveSystemProxyExceptions() }
+            }
+        }
         .overlay(alignment: .top) {
-            if let feedback = settingsFeedbackState {
+            if self.section == .app, let feedback = settingsFeedbackState {
                 self.settingsFeedbackBanner(
                     text: feedback.message,
                     color: feedback.color,
                     symbol: feedback.symbol)
+                    .allowsHitTesting(false)
             }
         }
     }
@@ -347,40 +366,49 @@ struct SystemTabView: TranslatingView {
                     .font(.app(size: T.FontSize.body, weight: .regular))
                     .foregroundStyle(nativePrimaryLabel)
                     .onSubmit {
-                        self.appViewModel.addSystemProxyExceptionDraft()
+                        self.addSystemProxyException()
                     }
 
                 Button(self.tr("ui.action.add_exception")) {
-                    self.appViewModel.addSystemProxyExceptionDraft()
+                    self.addSystemProxyException()
                 }
                 .appBorderedButtonStyle()
                 .controlSize(.small)
-                .disabled(!self.appViewModel.canAddSystemProxyException || self
-                    .isSystemProxyExceptionsSyncing)
+                .disabled(!self.appViewModel.canAddSystemProxyException)
             }
 
             HStack(spacing: T.space4) {
                 Button {
                     self.appViewModel.restoreDefaultSystemProxyExceptionsDraft()
-                } label: {
-                    Label(self.tr("ui.action.restore_defaults"), systemImage: "arrow.counterclockwise")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-                .appBorderedButtonStyle()
-                .controlSize(.small)
-                .disabled(self.isSystemProxyExceptionsSyncing)
-
-                Button {
                     Task { await self.appViewModel.saveSystemProxyExceptions() }
                 } label: {
-                    Label(self.tr("ui.action.save_exceptions"), systemImage: "checkmark.circle")
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    Label(self.tr("ui.action.restore_defaults"), systemImage: "arrow.counterclockwise")
                 }
                 .appBorderedButtonStyle()
                 .controlSize(.small)
-                .disabled(self.isSystemProxyExceptionsSyncing)
+
+                if self.appViewModel.systemProxyExceptionsError != nil {
+                    Button(self.tr("ui.settings.exceptions.retry")) {
+                        Task { await self.appViewModel.saveSystemProxyExceptions() }
+                    }
+                    .appBorderedButtonStyle()
+                    .controlSize(.small)
+                }
+            }
+
+            if let error = self.appViewModel.systemProxyExceptionsError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.app(size: T.FontSize.caption, weight: .regular))
+                    .foregroundStyle(nativeCritical)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .disabled(self.appViewModel.isConfigMutationBusy)
+    }
+
+    func addSystemProxyException() {
+        self.appViewModel.addSystemProxyExceptionDraft()
+        Task { await self.appViewModel.saveSystemProxyExceptions() }
     }
 
     var maintenanceSection: some View {
@@ -451,10 +479,7 @@ struct SystemTabView: TranslatingView {
 
     var coreSettingsSection: some View {
         VStack(alignment: .leading, spacing: T.space6) {
-            if self.showsCoreHeader {
-                self.coreHeader
-            }
-            self.coreFollowHint
+            self.coreSettingsActions
 
             // Log level is the most frequently changed field, so it sits above the
             // groups with no section header of its own.
@@ -468,50 +493,70 @@ struct SystemTabView: TranslatingView {
         }
     }
 
-    var showsCoreHeader: Bool {
-        self.appViewModel.isRemoteTarget || self.appViewModel.configOverrideCount > 0
-    }
+    var coreSettingsActions: some View {
+        let count = self.appViewModel.pendingCoreSettingsCount
+        let applying = self.appViewModel.isApplyingCoreSettings
+        let restoring = !self.appViewModel.coreSettingsRestores.isEmpty
 
-    var coreHeader: some View {
-        VStack(alignment: .leading, spacing: T.space2) {
-            if self.appViewModel.isRemoteTarget {
-                Text(self.tr("ui.settings.core_remote_hint"))
-                    .font(.app(size: T.FontSize.caption, weight: .regular))
-                    .foregroundStyle(nativeSecondaryLabel)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .menuRowPadding(vertical: 0)
-            }
-
-            if self.appViewModel.configOverrideCount > 0 {
+        return VStack(alignment: .leading, spacing: T.space6) {
+            if applying {
                 HStack(spacing: T.space6) {
-                    Spacer(minLength: 0)
-                    Button {
-                        self.confirmRestoreAllOverrides()
-                    } label: {
-                        Text(self.tr("ui.settings.overrides.restore_all"))
-                            .font(.app(size: T.FontSize.caption, weight: .medium))
-                    }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(self.nativeAccent.opacity(T.Opacity.solid))
-                    .disabled(!self.appViewModel.canRestoreConfigField)
+                    ProgressView().controlSize(.small)
+                    Text(self.tr("ui.settings.core.applying"))
                 }
-                .menuRowPadding(vertical: 0)
+            } else if count > 0 {
+                Text(self.tr("ui.settings.core.pending", count))
+                    .fontWeight(.semibold)
             }
-        }
-    }
-
-    var coreFollowHint: some View {
-        HStack(spacing: T.space6) {
-            Image(systemName: "info.circle")
-                .font(.app(size: T.FontSize.caption, weight: .semibold))
-                .foregroundStyle(nativeTertiaryLabel)
-            Text(self.tr("ui.settings.overrides.hint"))
-                .font(.app(size: T.FontSize.caption, weight: .regular))
+            Text(self.tr(restoring
+                ? "ui.settings.core.reload_hint"
+                : self.appViewModel.isRemoteTarget ? "ui.settings.core_remote_hint" : "ui.settings.overrides.hint"))
                 .foregroundStyle(nativeSecondaryLabel)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+
+            if let error = self.appViewModel.coreSettingsError {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(nativeCritical)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if self.appViewModel.settingsSavedMessage == self.tr("ui.settings.core.applied") {
+                Label(self.tr("ui.settings.core.applied"), systemImage: "checkmark.circle")
+                    .foregroundStyle(nativePositive)
+            }
+
+            HStack(spacing: T.space4) {
+                if self.appViewModel.configOverrideCount > 0 {
+                    Button {
+                        self.appViewModel.stageCoreSettingsRestore(Set(self.appViewModel.activeConfigOverrides.keys))
+                    } label: {
+                        Text(self.tr("ui.settings.overrides.restore_all"))
+                            .frame(minHeight: T.compactRowHeight)
+                            .padding(.horizontal, T.space6)
+                    }
+                    .buttonStyle(MenuBarInteractionStyle())
+                    .background(self.nativeControlSurface())
+                    .disabled(!self.appViewModel.canRestoreConfigField
+                        || self.appViewModel.coreSettingsRestores.count == self.appViewModel.configOverrideCount)
+                    .help(self.tr("ui.settings.core.restore_all_help"))
+                }
+                Spacer(minLength: 0)
+                if count > 0 {
+                    Button(self.tr("ui.settings.core.discard")) {
+                        self.appViewModel.discardCoreSettings()
+                    }
+                    .appBorderedButtonStyle()
+                    .disabled(applying)
+                }
+                Button(self.tr("ui.settings.core.apply")) {
+                    Task { await self.appViewModel.applyCoreSettings() }
+                }
+                .appBorderedButtonStyle(prominent: true)
+                .disabled(count == 0 || !self.appViewModel.canApplyCoreSettings
+                    || (restoring && !self.appViewModel.canRestoreConfigField))
+            }
+            .controlSize(.small)
         }
-        .menuRowPadding(vertical: T.space4)
+        .font(.app(size: T.FontSize.caption, weight: .regular))
+        .menuRowPadding(vertical: T.space6)
         .background {
             RoundedRectangle(cornerRadius: T.cornerRadius, style: .continuous)
                 .fill(self.nativeBadgeFill)
@@ -543,6 +588,8 @@ struct SystemTabView: TranslatingView {
     func coreTunModeRow(_ states: [ConfigOverrideFieldState]) -> some View {
         let toggle = states.first { $0.field == .tunEnable }
         let hasStack = states.contains { $0.field == .tunStack }
+        let enabled = self.appViewModel.coreSettingValue(.tunEnable) == .bool(true)
+        let stack = self.coreSettingText(.tunStack)
 
         return VStack(spacing: 0) {
             HStack(spacing: T.space6) {
@@ -551,18 +598,18 @@ struct SystemTabView: TranslatingView {
                 Spacer(minLength: 0)
                 if hasStack {
                     TunStackChipsView(
-                        isTunEnabled: self.appViewModel.isTunEnabled,
-                        isInteractionEnabled: !self.coreFieldDisabled)
+                        isTunEnabled: enabled,
+                        isInteractionEnabled: !self.coreFieldDisabled,
+                        selection: stack,
+                        stagesChanges: true)
                     { option in
-                        Task { await self.appViewModel.selectTunStack(option) }
+                        self.appViewModel.stageCoreSetting(.tunStack, value: .string(option))
                     }
                 }
                 if let toggle {
                     Toggle("", isOn: Binding(
-                        get: { self.appViewModel.isTunEnabled },
-                        set: { value in
-                            Task { await self.appViewModel.toggleTunMode(value) }
-                        }))
+                        get: { self.appViewModel.coreSettingValue(.tunEnable) == .bool(true) },
+                        set: { self.appViewModel.stageCoreSetting(.tunEnable, value: .bool($0)) }))
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .controlSize(.small)
@@ -581,7 +628,7 @@ struct SystemTabView: TranslatingView {
     /// the field, otherwise two identical "已覆盖" chips would be indistinguishable.
     @ViewBuilder
     func coreFieldOverrideChips(_ states: [ConfigOverrideFieldState]) -> some View {
-        let overridden = states.filter(\.isOverridden)
+        let overridden = states.filter { $0.isOverridden || self.appViewModel.coreSettingsEdits[$0.field] != nil }
         if !overridden.isEmpty {
             HStack(spacing: T.space4) {
                 Spacer(minLength: 0)
@@ -659,23 +706,20 @@ struct SystemTabView: TranslatingView {
     }
 
     func coreToggleFieldRow(_ state: ConfigOverrideFieldState) -> some View {
-        let setting = Self.coreSetting(for: state.field)
-        return Toggle(isOn: Binding(
-            get: { setting.map { self.appViewModel.boolValue(for: $0) } ?? false },
-            set: { value in
-                guard let setting else { return }
-                Task { await self.appViewModel.applyEditableCoreSetting(setting, to: value) }
-            })) {
-            HStack(spacing: T.space6) {
+        HStack(spacing: 0) {
+            Toggle(isOn: Binding(
+                get: { self.appViewModel.coreSettingValue(state.field) == .bool(true) },
+                set: { self.appViewModel.stageCoreSetting(state.field, value: .bool($0)) }))
+            {
                 self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
-                    .layoutPriority(1)
-                Spacer(minLength: 0)
-                self.coreFieldStatus(state)
             }
+            .toggleStyle(MenuBarRowToggleStyle(verticalPadding: T.space4))
+            .accessibilityLabel(self.tr(state.field.titleKey))
+            .disabled(self.coreFieldDisabled)
+
+            self.coreFieldStatus(state)
+                .padding(.trailing, T.space8)
         }
-        .toggleStyle(MenuBarRowToggleStyle(verticalPadding: T.space4))
-        .disabled(self.coreFieldDisabled)
-        .accessibilityLabel(self.tr(state.field.titleKey))
     }
 
     func corePortFieldRow(_ state: ConfigOverrideFieldState) -> some View {
@@ -685,23 +729,16 @@ struct SystemTabView: TranslatingView {
             Spacer(minLength: 0)
             TextField(self.tr("ui.placeholder.port"), text: Binding(
                 get: {
-                    self.appViewModel.editedProxyPorts[state.field.rawValue] ?? Self.portText(state.field, view: self)
+                    if case let .string(text)? = self.appViewModel.coreSettingsEdits[state.field] { return text }
+                    return self.coreSettingText(state.field)
                 },
-                set: {
-                    self.appViewModel.editedProxyPorts[state.field.rawValue] = $0
-                    self.appViewModel.scheduleProxyPortsAutoSaveIfNeeded()
-                }))
+                set: { self.appViewModel.stageCoreSetting(state.field, value: .string($0)) }))
                 .textFieldStyle(.roundedBorder)
                 .font(.app(size: T.FontSize.body, weight: .regular))
                 .foregroundStyle(nativePrimaryLabel)
                 .multilineTextAlignment(.trailing)
                 .frame(width: self.settingsPortFieldWidth, alignment: .trailing)
-                .onSubmit {
-                    // Only a real edit should reach the save path; focusing the
-                    // field and pressing return must leave the override untouched.
-                    guard self.appViewModel.editedProxyPorts[state.field.rawValue] != nil else { return }
-                    Task { await self.appViewModel.applyProxyPorts() }
-                }
+                .accessibilityLabel(self.tr(state.field.titleKey))
                 .disabled(self.coreFieldDisabled)
             self.coreFieldStatus(state)
         }
@@ -710,78 +747,38 @@ struct SystemTabView: TranslatingView {
     }
 
     func coreLogLevelRow(_ state: ConfigOverrideFieldState) -> some View {
-        let current = self.appViewModel.stringValue(for: .logLevel)
-        return self.coreMenuRow(state, valueText: current, disabled: self.coreFieldDisabled) { dismiss in
-            ForEach(ConfigLogLevel.allCases, id: \.self) { level in
-                AttachedPopoverMenuItem(
-                    title: level.rawValue,
-                    selected: current.caseInsensitiveCompare(level.rawValue) == .orderedSame)
-                {
-                    Task { await self.appViewModel.applyEditableCoreSetting(.logLevel, to: level.rawValue) }
-                    dismiss()
+        let current = self.coreSettingText(.logLevel)
+        return HStack(spacing: T.space6) {
+            self.settingsMenuRow(
+                self.tr(state.field.titleKey),
+                symbol: state.field.symbol,
+                valueText: current,
+                popoverWidth: self.settingsPopoverWidth)
+            { dismiss in
+                ForEach(ConfigLogLevel.allCases, id: \.self) { level in
+                    AttachedPopoverMenuItem(
+                        title: level.rawValue,
+                        selected: current.caseInsensitiveCompare(level.rawValue) == .orderedSame)
+                    {
+                        self.appViewModel.stageCoreSetting(.logLevel, value: .string(level.rawValue))
+                        dismiss()
+                    }
                 }
             }
+            .disabled(self.coreFieldDisabled)
+
+            self.coreFieldStatus(state)
+                .padding(.trailing, T.space8)
         }
     }
 
-    /// One core row: label on the left, control pinned to the right edge.
-    ///
-    /// Rows that open a menu render as a full-width button so the whole row hovers
-    /// and clicks like the app settings and proxy rows do. The control itself is
-    /// hit-testing disabled so it never splits the click target.
-    func coreMenuRow(
-        _ state: ConfigOverrideFieldState,
-        valueText: String,
-        disabled: Bool,
-        popoverWidth: CGFloat? = nil,
-        @ViewBuilder options: @escaping (_ dismiss: @escaping () -> Void) -> some View) -> some View
-    {
-        AttachedPopoverMenu(
-            width: popoverWidth ?? self.settingsPopoverWidth,
-            expandAnchor: true)
-        { _ in
-            HStack(spacing: T.space6) {
-                self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
-                    .layoutPriority(1)
-                Spacer(minLength: 0)
-                HStack(spacing: T.space2) {
-                    Text(valueText)
-                        .foregroundStyle(nativeSecondaryLabel)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Image(systemName: "chevron.right")
-                        .font(.app(size: T.FontSize.caption, weight: .semibold))
-                        .foregroundStyle(nativeTertiaryLabel)
-                }
-                .font(.app(size: T.FontSize.caption, weight: .medium))
-                .frame(width: self.settingsMenuControlWidth, alignment: .trailing)
-                self.coreFieldStatus(state)
-            }
-            .menuRowPadding(vertical: T.space4)
-        } content: { dismiss in
-            options(dismiss)
-        }
-        .disabled(disabled)
-    }
-
-    static func portText(_ field: ConfigOverrideField, view: SystemTabView) -> String {
-        switch field {
-        case .port:
-            view.appViewModel.settingsPort
-        case .socksPort:
-            view.appViewModel.settingsSocksPort
-        case .mixedPort:
-            view.appViewModel.settingsMixedPort
-        case .redirPort:
-            view.appViewModel.settingsRedirPort
-        default:
-            view.appViewModel.settingsTProxyPort
-        }
+    func coreSettingText(_ field: ConfigOverrideField) -> String {
+        field.valueText(self.appViewModel.coreSettingValue(field), language: self.language) ?? ""
     }
 
     /// Fixed width so every row's control lands on the same vertical line, whether
     /// or not the field is overridden.
-    static let coreStatusColumnWidth: CGFloat = 52
+    static let coreStatusColumnWidth: CGFloat = 74
 
     @ViewBuilder
     func coreFieldStatus(
@@ -789,9 +786,14 @@ struct SystemTabView: TranslatingView {
         showsFieldName: Bool = false) -> some View
     {
         Group {
-            if state.isOverridden {
+            let restoring = self.appViewModel.coreSettingsRestores.contains(state.field.rawValue)
+            if restoring || state.isOverridden {
                 Button {
-                    Task { await self.appViewModel.restoreConfigField(state.field.rawValue) }
+                    if restoring {
+                        self.appViewModel.undoCoreSettingRestore(state.field)
+                    } else {
+                        self.appViewModel.stageCoreSettingsRestore([state.field.rawValue])
+                    }
                 } label: {
                     Text(self.coreStatusChipText(state, showsFieldName: showsFieldName))
                         .font(.app(size: T.FontSize.caption, weight: .medium))
@@ -802,32 +804,43 @@ struct SystemTabView: TranslatingView {
                                 .fill(self.coreStatusTint(state).opacity(T.Opacity.tint))
                         }
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(MenuBarInteractionStyle())
                 .foregroundStyle(self.coreStatusTint(state).opacity(T.Opacity.solid))
                 .disabled(!self.appViewModel.canRestoreConfigField)
-                .help(self.coreRestoreHelp(state))
-                .accessibilityLabel(self.coreRestoreHelp(state))
+                .help(self.coreRestoreHelp(state, restoring: restoring))
+                .accessibilityLabel(self.coreRestoreHelp(state, restoring: restoring))
             } else {
-                Text(self.tr("ui.settings.overrides.status.following_short"))
+                Text(self.coreStatusChipText(state, showsFieldName: showsFieldName))
                     .font(.app(size: T.FontSize.caption, weight: .regular))
-                    .foregroundStyle(self.nativeTertiaryLabel)
+                    .foregroundStyle(self.appViewModel.coreSettingsEdits[state.field] == nil
+                        ? self.nativeTertiaryLabel : self.nativeAccent)
                     .lineLimit(1)
-                    .accessibilityLabel(self.tr("ui.settings.overrides.status.following"))
             }
         }
         .frame(width: showsFieldName ? nil : Self.coreStatusColumnWidth, alignment: .trailing)
     }
 
     func coreStatusChipText(_ state: ConfigOverrideFieldState, showsFieldName: Bool) -> String {
-        let status = self.tr(state.isUnconfirmed
-            ? "ui.settings.overrides.status.unconfirmed_short"
-            : "ui.settings.overrides.status.overridden_short")
+        let key = switch (
+            self.appViewModel.coreSettingsRestores.contains(state.field.rawValue),
+            self.appViewModel.coreSettingsEdits[state.field] != nil, state.isOverridden, state.isUnconfirmed
+        ) {
+        case (true, _, _, _): "ui.settings.core.restore_pending"
+        case (_, true, _, _): "ui.settings.core.edit_pending"
+        case (_, _, true, true): "ui.settings.overrides.status.unconfirmed_short"
+        case (_, _, true, false): "ui.settings.overrides.status.overridden_short"
+        default: "ui.settings.overrides.status.following_short"
+        }
+        let status = self.tr(key)
         guard showsFieldName else { return status }
         return self.tr("ui.settings.overrides.status.chip_named", self.tr(state.field.titleKey), status)
     }
 
-    func coreRestoreHelp(_ state: ConfigOverrideFieldState) -> String {
+    func coreRestoreHelp(_ state: ConfigOverrideFieldState, restoring: Bool) -> String {
         let title = self.tr(state.field.titleKey)
+        if restoring {
+            return self.tr("ui.settings.core.undo_restore", title)
+        }
         guard state.showsDifference, let declared = state.declaredText else {
             return self.tr("ui.settings.overrides.item.restore_help", title)
         }
@@ -841,37 +854,7 @@ struct SystemTabView: TranslatingView {
     }
 
     var coreFieldDisabled: Bool {
-        self.appViewModel.isCoreSettingSyncing || self.appViewModel.isConfigMutationBusy
-    }
-
-    static func coreSetting(for field: ConfigOverrideField) -> AppViewModel.EditableCoreSetting? {
-        switch field {
-        case .allowLan:
-            .allowLan
-        case .ipv6:
-            .ipv6
-        case .tcpConcurrent:
-            .tcpConcurrent
-        case .logLevel:
-            .logLevel
-        default:
-            nil
-        }
-    }
-
-    func confirmRestoreAllOverrides() {
-        let count = self.appViewModel.configOverrideCount
-        guard count > 0 else { return }
-        let response = self.appViewModel.runModalAlert(
-            style: .informational,
-            message: self.tr("ui.settings.overrides.restore_all_confirm.title"),
-            informative: self.tr("ui.settings.overrides.restore_all_confirm.message", count),
-            buttons: [
-                self.tr("ui.settings.overrides.restore_all"),
-                self.tr("ui.action.cancel"),
-            ])
-        guard response == .alertFirstButtonReturn else { return }
-        Task { await self.appViewModel.restoreAllConfigFields() }
+        !self.appViewModel.canApplyCoreSettings
     }
 
     var settingsPopoverWidth: CGFloat {
@@ -926,9 +909,12 @@ struct SystemTabView: TranslatingView {
                 .controlSize(.small)
                 .font(.app(size: T.FontSize.body, weight: .regular))
                 .foregroundStyle(nativePrimaryLabel)
+                .focused(self.$focusedProxyException, equals: exception.id)
+                .onSubmit { self.focusedProxyException = nil }
 
             Button {
                 self.appViewModel.removeSystemProxyExceptionDraft(id: exception.id)
+                Task { await self.appViewModel.saveSystemProxyExceptions() }
             } label: {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(nativeCritical.opacity(T.Opacity.solid))
@@ -1059,10 +1045,6 @@ struct SystemTabView: TranslatingView {
         default:
             nativeSecondaryLabel
         }
-    }
-
-    var isSystemProxyExceptionsSyncing: Bool {
-        self.appViewModel.settingsSyncingKey == "system-proxy-exceptions"
     }
 
     var settingsFeedbackState: (message: String, color: Color, symbol: String)? {

@@ -31,11 +31,6 @@ struct RuntimeConfigInput: Equatable, Sendable {
     }
 }
 
-struct SettingsPortField: Equatable {
-    let key: String
-    let value: String
-}
-
 enum RuntimeVisualStatus {
     case stopped
     case starting

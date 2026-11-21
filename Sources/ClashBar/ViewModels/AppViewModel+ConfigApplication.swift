@@ -34,6 +34,7 @@ extension AppViewModel {
         case .unverified: self.tr("app.config.apply.unverified")
         case let .recoveryFailed(failure): self.tr("app.config.apply.recovery_failed", failure)
         case .stale: self.tr("app.config.apply.stale")
+        case let .restoreFailed(failure): self.tr("app.config.apply.restore_failed", failure)
         case let .fields(fields): self.tr("app.config.apply.partial", fields.joined(separator: ", "))
         case nil: self.tunErrorMessage(error)
         }
@@ -202,89 +203,80 @@ extension AppViewModel {
         try await self.requireRestoredConfig(matching: fields)
     }
 
-    /// Restores every overridden field in a single reload. Restoring one key at a
-    /// time would reload the config once per field and interrupt proxying each time.
-    func restoreAllConfigFields() async {
-        guard !self.isConfigMutationBusy, let id = self.activeConfigOverrideID,
-              let input = self.runtimeConfigInput, let yaml = input.yaml,
+    var loadedConfigForSettingsRestore: RuntimeConfigInput? {
+        guard !self.isRemoteTarget, let input = self.runtimeConfigInput, input.yaml != nil,
+              input.status == self.processManager.status,
               let target = self.configService.selectedConfig, let loadedPath = input.selectedPath,
-              ConfigOverrides.pathKey(for: target) == ConfigOverrides.pathKey(for: URL(fileURLWithPath: loadedPath)),
-              !self.activeConfigOverrides.isEmpty
-        else { return }
-        let path = target.path
-        self.runtimeConfigReloadCount += 1
-        self.configReadEpoch = UUID()
-        defer {
-            self.configReadEpoch = UUID()
-            self.runtimeConfigReloadCount -= 1
-        }
-        let oldFields = await self.loadedConfigFields(for: input)
-        do {
-            try await self.clientOrThrow().requestNoResponse(.putConfigs(force: true, path: path, payload: yaml))
-            try await self.acknowledgeLoadedConfig(
-                at: path, yaml: yaml, status: input.status, controller: input.controller, overrides: [:])
-            // Only field-level mismatches must keep the overrides. A system proxy
-            // reconfiguration failure is unrelated to the user's intent to follow
-            // the config file and must not roll the whole restore back.
-            guard self.configApplicationIssues.isEmpty else {
-                throw ConfigApplicationError.fields(self.configApplicationIssues)
-            }
-            guard self.configApplicationLoaded else { throw ConfigApplicationError.unverified }
-            self.configOverrides.values[id] = nil
-            self.runtimeConfigInput?.overrides = [:]
-            self.persistConfigOverrides()
-        } catch {
-            let failure = self.configApplicationErrorMessage(error)
-            do {
-                try await self.restoreLoadedConfig(input, at: path, matching: oldFields)
-                self.reportRestoredConfig(after: failure)
-            } catch {
-                self.clearLoadedConfigState()
-                self.configApplicationFailure = self.tr("app.config.apply.recovery_failed", failure)
-            }
-            self.settingsErrorMessage = self.tr("app.config.apply.restore_failed", self.configApplicationFailure ?? "")
-        }
+              ConfigOverrides.pathKey(for: target) == ConfigOverrides.pathKey(for: URL(fileURLWithPath: loadedPath))
+        else { return nil }
+        return input
     }
 
-    func restoreConfigField(_ key: String) async {
+    func applyCoreSettingsRestores(_ keys: Set<String>, edits: [String: ConfigPatchValue]) async throws {
         guard !self.isConfigMutationBusy, let id = self.activeConfigOverrideID,
-              let input = self.runtimeConfigInput, let yaml = input.yaml,
-              let target = self.configService.selectedConfig, let loadedPath = input.selectedPath,
-              ConfigOverrides.pathKey(for: target) == ConfigOverrides.pathKey(for: URL(fileURLWithPath: loadedPath)),
-              self.configOverrides.values[id]?[key] != nil
-        else { return }
-        let path = target.path
-        var remaining = self.activeConfigOverrides
-        remaining.removeValue(forKey: key)
+              let input = self.loadedConfigForSettingsRestore, let yaml = input.yaml, let path = input.selectedPath
+        else { throw ConfigApplicationError.stale }
+
+        let previous = self.activeConfigOverrides
+        let previousIssues = Set(self.configApplicationIssues)
+        let declared = try ConfigReloadAction.fields(in: yaml)
+        let intended = previous.filter { !keys.contains($0.key) }.merging(edits) { _, edit in edit }
         self.runtimeConfigReloadCount += 1
         self.configReadEpoch = UUID()
         defer {
             self.configReadEpoch = UUID()
             self.runtimeConfigReloadCount -= 1
         }
-        let oldFields = await self.loadedConfigFields(for: input)
+
+        let baseline = try await self.fetchRuntimeConfigSnapshot()
+        // Reloading YAML resets the temporary proxy mode unless it is reapplied with the overrides.
+        var runtimeOverrides = intended
+        runtimeOverrides["mode"] = baseline.overrideFields["mode"]
+        let tun = ConfigOverrideField.tunEnable.rawValue
+        let desiredTun = intended[tun] ?? declared[tun]
+        if desiredTun == .bool(true), edits[tun] != nil || edits[ConfigOverrideField.tunStack.rawValue] != nil {
+            try await self.ensureTunPermissions(requestIfMissing: true)
+        }
+
         do {
             try await self.clientOrThrow().requestNoResponse(.putConfigs(force: true, path: path, payload: yaml))
             try await self.acknowledgeLoadedConfig(
-                at: path, yaml: yaml, status: input.status, controller: input.controller, overrides: remaining)
-            guard let expected = self.configBaselineFields[key] else { throw ConfigApplicationError.unverified }
-            if oldFields?.isEmpty != false { try self.requireConfigApplied() }
-            var restoredFields = oldFields ?? [:]
-            restoredFields[key] = expected
-            try await self.requireRestoredConfig(matching: restoredFields)
-            self.configOverrides.values[id] = remaining
-            self.runtimeConfigInput?.overrides = remaining
+                at: path, yaml: yaml, status: input.status, controller: input.controller, overrides: runtimeOverrides)
+
+            let observed = try await self.fetchRuntimeConfigSnapshot().overrideFields
+            var expected = edits
+            expected["mode"] = runtimeOverrides["mode"]
+            for key in keys {
+                expected[key] = declared[key] ?? self.configBaselineFields[key]
+            }
+            // Previously unapplied overrides may remain unapplied after a reload.
+            for (key, value) in previous where intended[key] == value
+                && ConfigOverrides.matches(value, baseline.overrideFields[key])
+            {
+                expected[key] = value
+            }
+            let mismatches = expected.compactMap { key, value -> String? in
+                ConfigOverrides.matches(value, observed[key]) ? nil : key
+            }
+            let issues = Set(mismatches).union(Set(self.configApplicationIssues).subtracting(previousIssues))
+            guard issues.isEmpty else { throw ConfigApplicationError.fields(issues.sorted()) }
+
+            self.configOverrides.values[id] = intended.isEmpty ? nil : intended
+            self.runtimeConfigInput?.overrides = intended
             self.persistConfigOverrides()
         } catch {
             let failure = self.configApplicationErrorMessage(error)
             do {
-                try await self.restoreLoadedConfig(input, at: path, matching: oldFields)
+                var recovery = input
+                recovery.overrides["mode"] = baseline.overrideFields["mode"]
+                try await self.restoreLoadedConfig(recovery, at: path, matching: baseline.overrideFields)
+                self.runtimeConfigInput?.overrides = input.overrides
                 self.reportRestoredConfig(after: failure)
             } catch {
                 self.clearLoadedConfigState()
                 self.configApplicationFailure = self.tr("app.config.apply.recovery_failed", failure)
             }
-            self.settingsErrorMessage = self.tr("app.config.apply.restore_failed", self.configApplicationFailure ?? "")
+            throw ConfigApplicationError.restoreFailed(self.configApplicationFailure ?? failure)
         }
     }
 }
