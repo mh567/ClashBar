@@ -4,7 +4,6 @@ enum ConfigOverrideGroup: String, CaseIterable, Identifiable {
     case network
     case ports
     case tun
-    case other
 
     var id: String {
         self.rawValue
@@ -18,8 +17,6 @@ enum ConfigOverrideGroup: String, CaseIterable, Identifiable {
             "ui.settings.group.ports"
         case .tun:
             "ui.settings.group.tun"
-        case .other:
-            "ui.settings.group.other"
         }
     }
 }
@@ -50,7 +47,9 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
         self.rawValue
     }
 
-    var group: ConfigOverrideGroup {
+    /// `logLevel` is the most frequently changed field, so it sits at the top of
+    /// the core section on its own rather than inside a group.
+    var group: ConfigOverrideGroup? {
         switch self {
         case .allowLan, .ipv6, .tcpConcurrent:
             .network
@@ -59,7 +58,7 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
         case .tunEnable, .tunStack:
             .tun
         case .logLevel:
-            .other
+            nil
         }
     }
 
@@ -171,6 +170,10 @@ extension AppViewModel {
 
     func configOverrideFieldStates(in group: ConfigOverrideGroup) -> [ConfigOverrideFieldState] {
         self.configOverrideFieldStates.filter { $0.field.group == group }
+    }
+
+    var ungroupedConfigOverrideFieldStates: [ConfigOverrideFieldState] {
+        self.configOverrideFieldStates.filter { $0.field.group == nil }
     }
 
     /// TUN route exclusions come from the running core, falling back to the value

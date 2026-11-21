@@ -73,12 +73,15 @@ final class ConfigOverridesTests: XCTestCase {
             ["mixed-port": .int(7891), "tun.enable": .bool(false)])
     }
 
-    func testEveryFieldBelongsToExactlyOneGroup() {
+    func testEveryFieldHasAtMostOneGroupAndGroupsPartitionTheRest() {
         let grouped = ConfigOverrideGroup.allCases.flatMap { group in
             ConfigOverrideField.allCases.filter { $0.group == group }
         }
-        XCTAssertEqual(Set(grouped), Set(ConfigOverrideField.allCases))
-        XCTAssertEqual(grouped.count, ConfigOverrideField.allCases.count)
+        XCTAssertEqual(grouped.count, Set(grouped).count, "a field must not sit in two groups")
+
+        let ungrouped = ConfigOverrideField.allCases.filter { $0.group == nil }
+        XCTAssertEqual(Set(grouped).union(ungrouped), Set(ConfigOverrideField.allCases))
+        XCTAssertEqual(ungrouped, [.logLevel], "log level is shown on its own, above the groups")
     }
 
     func testTunRouteExcludeAddressIsReadFromYAML() throws {
@@ -176,10 +179,11 @@ final class ConfigOverridesTests: XCTestCase {
             [$0.titleKey, "ui.state.on", "ui.state.off"]
         } + ConfigOverrideGroup.allCases.map(\.titleKey) + [
             "ui.settings.overrides.hint",
-            "ui.settings.overrides.footer",
             "ui.settings.overrides.status.overridden_short",
             "ui.settings.overrides.status.unconfirmed_short",
             "ui.settings.overrides.status.following_short",
+            "ui.settings.overrides.status.chip_named",
+            "ui.settings.group.general",
             "ui.settings.overrides.status.following",
             "ui.settings.overrides.item.restore_help_with_declared",
             "ui.settings.overrides.restore_all",

@@ -199,8 +199,7 @@
 "ui.settings.route_exclude.title" = "TUN 排除网段";
 "ui.settings.route_exclude.source.yaml" = "配置文件";
 "ui.settings.route_exclude.source.core" = "内核实际值";
-"ui.settings.route_exclude.empty" = "配置文件未声明，使用内核默认。";
-"ui.settings.route_exclude.hint" = "来自 tun.route-exclude-address，决定哪些网段不进入 TUN 路由。只读，修改请编辑配置文件。";
+"ui.settings.route_exclude.empty" = "未声明，用内核默认";
 "ui.settings.ssid_strategy.current_ssid.none" = "未连接 Wi-Fi";
 "ui.settings.ssid_strategy.status.authorized" = "已授权";
 "ui.settings.ssid_strategy.status.not_determined" = "未请求";
@@ -476,11 +475,13 @@
 "app.config.apply.loaded" = "配置已加载";
 "app.config.apply.pending" = "文件已保存，加载后应用。";
 "app.config.apply.verifying" = "正在应用配置…";
-"ui.settings.overrides.hint" = "被覆盖的字段在订阅更新后仍保持你设定的值。点右侧状态即可恢复为当前配置声明的值。";
-"ui.settings.overrides.footer" = "未覆盖的字段始终跟随当前配置文件。";
 "ui.settings.overrides.status.overridden_short" = "已覆盖";
 "ui.settings.overrides.status.unconfirmed_short" = "未生效";
 "ui.settings.overrides.status.following_short" = "跟随";
+"ui.settings.overrides.hint" = "改动会成为覆盖，点状态恢复跟随；未改动的字段始终跟随配置。";
+"ui.settings.route_exclude.hint" = "只读，改动请编辑配置文件。";
+"ui.settings.core_remote_hint" = "覆盖按所属配置保存。";
+"ui.settings.overrides.status.chip_named" = "%@ %@";
 "ui.settings.overrides.item.restore_help_with_declared" = "将「%@」恢复为配置声明值 %@";
 "ui.settings.overrides.status.following" = "跟随配置";
 "ui.settings.overrides.restore_all" = "全部恢复";
@@ -491,8 +492,7 @@
 "ui.settings.group.network" = "网络";
 "ui.settings.group.ports" = "代理端口";
 "ui.settings.group.tun" = "TUN";
-"ui.settings.group.other" = "其他";
-"ui.settings.core_remote_hint" = "字段覆盖按当前控制器所属的配置保存。";
+"ui.settings.group.general" = "常用";
 "ui.settings.core_mode.hint" = "运行模式在顶部切换，不会写入字段覆盖。";
 "ui.settings.overrides.item.restore_help" = "将「%@」恢复为当前配置声明的值";
 "ui.settings.tun_stack" = "TUN 协议栈";

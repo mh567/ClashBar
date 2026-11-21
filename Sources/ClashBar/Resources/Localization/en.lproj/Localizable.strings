@@ -195,8 +195,7 @@
 "ui.settings.route_exclude.title" = "TUN exclusions";
 "ui.settings.route_exclude.source.yaml" = "config file";
 "ui.settings.route_exclude.source.core" = "live core";
-"ui.settings.route_exclude.empty" = "Not declared in the config file; the core default applies.";
-"ui.settings.route_exclude.hint" = "From tun.route-exclude-address. It decides which subnets stay out of the TUN routing table. Read only; edit the configuration file to change it.";
+"ui.settings.route_exclude.empty" = "Not declared; core default";
 "ui.settings.ssid_strategy.current_ssid.none" = "No Wi-Fi Connected";
 "ui.settings.ssid_strategy.status.authorized" = "Authorized";
 "ui.settings.ssid_strategy.status.not_determined" = "Not Requested";
@@ -476,11 +475,13 @@
 "app.config.apply.loaded" = "Configuration loaded";
 "app.config.apply.pending" = "Saved. Applies when loaded.";
 "app.config.apply.verifying" = "Applying configuration…";
-"ui.settings.overrides.hint" = "An overridden field keeps your value when the subscription updates. Select its status to return it to the value declared by the loaded config.";
-"ui.settings.overrides.footer" = "Fields you have not overridden always follow the loaded configuration file.";
 "ui.settings.overrides.status.overridden_short" = "Overridden";
 "ui.settings.overrides.status.unconfirmed_short" = "Not applied";
 "ui.settings.overrides.status.following_short" = "Following";
+"ui.settings.overrides.hint" = "Edits become overrides; tap the status to follow again. Untouched fields always follow.";
+"ui.settings.route_exclude.hint" = "Read only. Edit the configuration file to change it.";
+"ui.settings.core_remote_hint" = "Overrides are stored per configuration.";
+"ui.settings.overrides.status.chip_named" = "%@ %@";
 "ui.settings.overrides.item.restore_help_with_declared" = "Return “%@” to the declared value %@";
 "ui.settings.overrides.status.following" = "Following";
 "ui.settings.overrides.restore_all" = "Restore all";
@@ -491,8 +492,7 @@
 "ui.settings.group.network" = "Network";
 "ui.settings.group.ports" = "Proxy ports";
 "ui.settings.group.tun" = "TUN";
-"ui.settings.group.other" = "Other";
-"ui.settings.core_remote_hint" = "Field overrides are stored per configuration of the active controller.";
+"ui.settings.group.general" = "Common";
 "ui.settings.core_mode.hint" = "The proxy mode is switched from the top bar and never stored as a field override.";
 "ui.settings.overrides.item.restore_help" = "Return “%@” to the value declared by the loaded config";
 "ui.settings.tun_stack" = "TUN stack";
