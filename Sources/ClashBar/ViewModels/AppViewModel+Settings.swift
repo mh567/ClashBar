@@ -90,25 +90,13 @@ extension AppViewModel {
         let fields = self.proxyPortFields.compactMap { field in
             self.editedProxyPorts[field.key].map { SettingsPortField(key: field.key, value: $0) }
         }
-        // A field that was opened and left unchanged must not be written back:
-        // patching an identical value would still record a manual override.
-        let changed = ProxyPortsDraft.changedFields(fields, from: self.lastSyncedEditableSettings)
-        let edited = fields.filter { changed.contains($0.key) }
-        for field in fields where !changed.contains(field.key) {
-            self.editedProxyPorts.removeValue(forKey: field.key)
-        }
-        guard !edited.isEmpty else { return }
-
-        // Auto-save is silent, so it waits for every edited field to parse. A
-        // half-typed value keeps its draft and the rest retries on the next edit
-        // instead of being dropped.
-        guard ProxyPortsDraft.isAutoSavable(edited),
+        guard ProxyPortsDraft.isAutoSavable(fields),
               let body = self.validatedPortPatchBody(
-                  fields: edited,
+                  fields: fields,
                   errorMessageKey: "app.settings.error.port_range")
         else { return }
 
-        for field in edited {
+        for field in fields {
             self.editedProxyPorts.removeValue(forKey: field.key)
         }
         await self.patchConfigBody(
@@ -180,15 +168,17 @@ extension AppViewModel {
         }
 
         suppressSettingsPersistence = true
-        self.syncEditableFields(
-            from: previous,
-            to: incoming,
-            fields: [
-                (\.settingsAllowLan, \.allowLan),
-                (\.settingsIPv6, \.ipv6),
-                (\.settingsTCPConcurrent, \.tcpConcurrent),
-                (\.isTunEnabled, \.tunEnabled),
-            ])
+        let target = self.isAwaitingTunRecovery
+            ? incoming.withTunEnabled(self.isTunEnabled)
+            : incoming
+
+        let boolFields: [(ReferenceWritableKeyPath<AppViewModel, Bool>, KeyPath<EditableSettingsSnapshot, Bool>)] = [
+            (\.settingsAllowLan, \.allowLan),
+            (\.settingsIPv6, \.ipv6),
+            (\.settingsTCPConcurrent, \.tcpConcurrent),
+            (\.isTunEnabled, \.tunEnabled),
+        ]
+        self.syncEditableFields(from: previous, to: target, fields: boolFields)
 
         self.syncEditableFields(
             from: previous,
@@ -203,8 +193,10 @@ extension AppViewModel {
             ])
         suppressSettingsPersistence = false
 
-        lastSyncedEditableSettings = incoming
-        persistEditableSettingsSnapshot()
+        // The baseline must agree with what the UI shows, or the next poll
+        // re-applies the boot value.
+        self.lastSyncedEditableSettings = target
+        self.persistEditableSettingsSnapshot()
     }
 
     func currentEditableSettingsSnapshot() -> EditableSettingsSnapshot {

@@ -147,12 +147,14 @@ struct MenuBarRootView: TranslatingView {
                 self.currentTabContentHeight = 0
                 self.appViewModel.setActiveMenuTab(tab)
                 self.refreshDerivedData(for: tab)
+                self.applyPanelHeightForCurrentTab()
             }
             .onChange(of: self.appViewModel.activeMenuTab) { tab in
                 guard self.rootViewModel.currentTab != tab else { return }
                 self.setCurrentTabWithoutAnimation(tab)
                 self.currentTabContentHeight = 0
                 self.refreshDerivedData(for: tab)
+                self.applyPanelHeightForCurrentTab()
             }
             .onChange(of: resolvedPanelHeight) { _ in
                 publishPreferredPanelHeight()

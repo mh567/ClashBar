@@ -80,46 +80,4 @@ final class ProxyPortsDraftTests: XCTestCase {
     func testDiffersWithoutSnapshotAssumesPendingChange() {
         XCTAssertTrue(ProxyPortsDraft.differs(self.fields(), from: nil))
     }
-
-    /// Focus-and-return on an untouched field must not report a change, otherwise
-    /// the click alone records a manual override of that port.
-    func testChangedFieldsIsEmptyWhenNothingWasEdited() {
-        XCTAssertTrue(ProxyPortsDraft.changedFields(self.fields(), from: self.snapshot()).isEmpty)
-        XCTAssertTrue(
-            ProxyPortsDraft.changedFields(self.fields(mixed: " 7890 "), from: self.snapshot()).isEmpty)
-    }
-
-    func testChangedFieldsReportsOnlyEditedKeys() {
-        let fields = self.fields(socks: "1080", mixed: "7891")
-        XCTAssertEqual(ProxyPortsDraft.changedFields(fields, from: self.snapshot()), ["mixed-port", "socks-port"])
-    }
-
-    func testChangedFieldsWithoutSnapshotTreatsAllAsEdited() {
-        XCTAssertEqual(
-            ProxyPortsDraft.changedFields(self.fields(), from: nil).count,
-            self.fields().count)
-    }
-
-    /// A cleared field counts as an edit, so the save path must decide separately
-    /// whether it can be written. Dropping it as "unchanged" would silently ignore
-    /// the user's intent to reset the port.
-    func testClearedFieldCountsAsEditedButIsNotAutoSavable() {
-        let fields = self.fields(socks: "1080", mixed: "")
-        XCTAssertEqual(ProxyPortsDraft.changedFields(fields, from: self.snapshot()), ["mixed-port", "socks-port"])
-
-        let edited = fields.filter { $0.key == "mixed-port" || $0.key == "socks-port" }
-        XCTAssertFalse(ProxyPortsDraft.isAutoSavable(edited))
-    }
-
-    /// Only the edited subset gates the save: a field still holding its applied
-    /// value must not block writing a real change elsewhere.
-    func testUntouchedFieldsDoNotBlockAutoSave() {
-        let snapshot = self.snapshot()
-        let fields = self.fields(mixed: "7891")
-        let changed = ProxyPortsDraft.changedFields(fields, from: snapshot)
-        let edited = fields.filter { changed.contains($0.key) }
-
-        XCTAssertEqual(edited.map(\.key), ["mixed-port"])
-        XCTAssertTrue(ProxyPortsDraft.isAutoSavable(edited))
-    }
 }

@@ -331,6 +331,22 @@ struct EditableSettingsSnapshot: Equatable, Codable {
         self.tproxyPort = tproxyPort
     }
 
+    func withTunEnabled(_ tunEnabled: Bool?) -> EditableSettingsSnapshot {
+        guard let tunEnabled else { return self }
+        return EditableSettingsSnapshot(
+            mode: self.mode,
+            allowLan: self.allowLan,
+            ipv6: self.ipv6,
+            tcpConcurrent: self.tcpConcurrent,
+            tunEnabled: tunEnabled,
+            logLevel: self.logLevel,
+            port: self.port,
+            socksPort: self.socksPort,
+            mixedPort: self.mixedPort,
+            redirPort: self.redirPort,
+            tproxyPort: self.tproxyPort)
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.mode = try container.decodeIfPresent(CoreMode.self, forKey: .mode) ?? .rule

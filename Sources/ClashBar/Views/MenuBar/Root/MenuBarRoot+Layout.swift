@@ -31,6 +31,16 @@ extension MenuBarRootView {
         return max(1, min(self.fixedSectionHeight + self.tabScrollAreaHeight, popoverLayoutModel.maxPanelHeight))
     }
 
+    /// Tabs without a measured content height (rules, connections, logs) fill the
+    /// available space. Without this the panel keeps whatever height the previous
+    /// tab requested, so a list tab opened after a tall tab stays squashed.
+    func applyPanelHeightForCurrentTab() {
+        guard self.hasMeasuredFixedSections else { return }
+        guard !self.tabUsesDynamicHeight(self.rootViewModel.currentTab) else { return }
+
+        self.popoverLayoutModel.requestPanelHeight(self.popoverLayoutModel.maxPanelHeight)
+    }
+
     enum SectionHeightTarget {
         case header
         case modeAndTab

@@ -491,7 +491,6 @@
 "ui.settings.section.core" = "内核设置";
 "ui.settings.group.network" = "网络";
 "ui.settings.group.ports" = "代理端口";
-"ui.settings.core_mode.hint" = "运行模式在顶部切换，不会写入字段覆盖。";
 "ui.settings.overrides.item.restore_help" = "将「%@」恢复为当前配置声明的值";
 "ui.settings.tun_stack" = "TUN 协议栈";
 "ui.state.on" = "开启";

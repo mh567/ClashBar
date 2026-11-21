@@ -569,6 +569,7 @@ extension AppViewModel {
         }
 
         var remainingSystemProxyRecovery = recovery.systemProxyEnabled
+        var remainingTunRecovery = recovery.tunEnabled
 
         if recovery.systemProxyEnabled {
             self.isProxySyncing = true
@@ -601,9 +602,14 @@ extension AppViewModel {
             }
         }
 
+        if recovery.tunEnabled {
+            await self.applyTunMode(true, requestPermissionsIfMissing: false)
+            remainingTunRecovery = false
+        }
+
         let remaining = CoreFeatureRecoveryState(
             systemProxyEnabled: remainingSystemProxyRecovery,
-            tunEnabled: false)
+            tunEnabled: remainingTunRecovery)
         self.pendingCoreFeatureRecoveryState = remaining.shouldRecoverAnyFeature ? remaining : nil
     }
 }

@@ -18,6 +18,11 @@ enum ConfigOverrideGroup: String, CaseIterable, Identifiable {
     }
 }
 
+enum ConfigOverrideOrigin {
+    case explicitSave
+    case runtimeAction
+}
+
 enum ConfigOverrideField: String, CaseIterable, Identifiable {
     case allowLan = "allow-lan"
     case ipv6
@@ -30,14 +35,14 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
     case tunEnable = "tun.enable"
     case tunStack = "tun.stack"
     case logLevel = "log-level"
+    case mode
 
-    /// Keys that must never become a stored override. `mode` is switched from the
-    /// top bar and is a transient runtime choice, so switching it must not pin the
-    /// field against subscription updates.
-    static let nonPersistableKeys: Set<String> = ["mode"]
+    /// Switching the mode from the top bar is a transient runtime choice, so it
+    /// must not pin the field. An explicit change from settings may still do so.
+    static let transientKeys: Set<String> = ["mode"]
 
-    static func isPersistableKey(_ key: String) -> Bool {
-        !self.nonPersistableKeys.contains(key)
+    static func isPersistableOnRuntimeChange(_ key: String) -> Bool {
+        !self.transientKeys.contains(key)
     }
 
     var id: String {
@@ -52,7 +57,7 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
             .network
         case .port, .socksPort, .mixedPort, .redirPort, .tproxyPort:
             .ports
-        case .logLevel:
+        case .logLevel, .mode:
             nil
         }
     }
@@ -73,6 +78,8 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
             "ui.settings.tcp_concurrent"
         case .logLevel:
             "ui.settings.log_level"
+        case .mode:
+            "ui.banner.mode.title"
         case .port:
             "ui.settings.port.port"
         case .socksPort:
@@ -100,6 +107,8 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
             "point.3.connected.trianglepath.dotted"
         case .logLevel:
             "text.alignleft"
+        case .mode:
+            "shield.lefthalf.filled"
         case .port:
             "network"
         case .socksPort:
@@ -127,9 +136,22 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
         case let .string(text):
             let trimmed = text.trimmed
             guard !trimmed.isEmpty else { return nil }
-            return trimmed
+            return self == .mode ? Self.modeText(trimmed, language: language) : trimmed
         case .object:
             return nil
+        }
+    }
+
+    static func modeText(_ raw: String, language: AppLanguage) -> String {
+        switch raw.lowercased() {
+        case "rule":
+            L10n.t("ui.mode.rule", language: language)
+        case "global":
+            L10n.t("ui.mode.global", language: language)
+        case "direct":
+            L10n.t("ui.mode.direct", language: language)
+        default:
+            raw
         }
     }
 }
@@ -207,6 +229,8 @@ extension AppViewModel {
             .bool(self.settingsTCPConcurrent)
         case .logLevel:
             .string(self.settingsLogLevel)
+        case .mode:
+            .string(self.currentMode.rawValue)
         case .port:
             self.portValue(self.settingsPort)
         case .socksPort:

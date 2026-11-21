@@ -17,6 +17,12 @@ extension AppViewModel {
         self.tunRouteExcludeAddress = nil
     }
 
+    /// True while a pending recovery owns the TUN state, so a core that still
+    /// reports its startup default must not overwrite the switch.
+    var isAwaitingTunRecovery: Bool {
+        self.pendingCoreFeatureRecoveryState?.tunEnabled == true || self.isTunSyncing
+    }
+
     var configApplicationOutcome: ConfigApplicationOutcome {
         guard self.configApplicationLoaded else { return .failed }
         return self.configApplicationFailure == nil && self.configApplicationIssues.isEmpty ? .applied : .partial

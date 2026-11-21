@@ -6,7 +6,19 @@ extension AppViewModel {
         guard self.isModeSwitchEnabled, !self.modeSwitchInFlight else { return }
         self.modeSwitchInFlight = true
         defer { self.modeSwitchInFlight = false }
-        await self.patchSingleConfig("mode", value: .string(target.rawValue))
+        await self.patchSingleConfig("mode", value: .string(target.rawValue), origin: .runtimeAction)
+    }
+
+    /// Pins the mode as an explicit override from the settings page.
+    func applyCoreMode(_ target: CoreMode) async {
+        guard self.isModeSwitchEnabled, !self.modeSwitchInFlight else { return }
+        self.modeSwitchInFlight = true
+        defer { self.modeSwitchInFlight = false }
+        await self.patchSingleConfig("mode", value: .string(target.rawValue), origin: .explicitSave)
+    }
+
+    func currentModeLabel(language: AppLanguage) -> String {
+        ConfigOverrideField.modeText(self.currentMode.rawValue, language: language)
     }
 
     func toggleSystemProxy(_ enabled: Bool) async {
