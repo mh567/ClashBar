@@ -1,3 +1,25 @@
+## v1.1.6
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.6-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> ClashBar 默认使用订阅或本地 YAML 声明的内核设置，并按配置保留你手动改过的字段。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **按字段手动覆盖**：在「设置 → 手动覆盖」中可将单个字段恢复为「跟随配置」。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **运行时配置预览**：显示当前加载的配置版本和字段来源，并合并重复的 Geo URL 键名。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **订阅应用失败处理**：区分下载、校验与实际生效状态，新配置加载失败时尝试恢复上次已加载的版本。
+
+---
+
 ## v1.1.5
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.5-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
