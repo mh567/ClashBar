@@ -150,7 +150,7 @@ extension ProxyTabView {
         }
         .padding(.horizontal, rowHorizontalPadding)
         .padding(.vertical, T.space6)
-        .background(nativeHoverRowBackground(hovered))
+        .background(self.nativeActionRowBackground(hovered))
         .onHover { hoveredProviderName = self.nextHovered(
             current: hoveredProviderName,
             target: name,
@@ -349,7 +349,7 @@ extension ProxyTabView {
             .frame(height: T.compactRowHeight)
             .padding(.horizontal, rowHorizontalPadding)
             .padding(.vertical, rowVerticalPadding)
-            .background(nativeHoverRowBackground(isHovered))
+            .background(self.nativeActionRowBackground(isHovered))
         } content: { dismiss in
             self.popoverHeader(name: group.name, count: nodeCount) {
                 if let iconURL {

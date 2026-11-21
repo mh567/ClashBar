@@ -36,11 +36,8 @@ struct SystemTabView: TranslatingView {
     @State private var section: SettingsSection = .app
     @State private var isExceptionsExpanded = false
 
-    func settingsCardHeader(_ title: String, symbol: String) -> some View {
+    func settingsCardHeader(_ title: String) -> some View {
         HStack(spacing: T.space6) {
-            Image(systemName: symbol)
-                .font(.app(size: T.FontSize.caption, weight: .semibold))
-                .foregroundStyle(nativeTertiaryLabel)
             Text(title)
                 .font(.app(size: T.FontSize.body, weight: .bold))
                 .foregroundStyle(nativeTertiaryLabel)
@@ -226,8 +223,7 @@ struct SystemTabView: TranslatingView {
         return VStack(alignment: .leading, spacing: T.space6) {
             VStack(spacing: 0) {
                 self.settingsCardHeader(
-                    isRemote ? self.tr("ui.section.local_app_settings") : self.tr("ui.section.basic_settings"),
-                    symbol: "slider.horizontal.3")
+                    isRemote ? self.tr("ui.section.local_app_settings") : self.tr("ui.section.basic_settings"))
                 ForEach(localOnlyItems, id: \.id) { item in
                     self.settingsToggleRow(
                         isRemote ? "\(item.title) (\(self.tr("ui.machine.local_label")))" : item.title,
@@ -400,9 +396,7 @@ struct SystemTabView: TranslatingView {
         ]
 
         return VStack(spacing: 0) {
-            self.settingsCardHeader(
-                self.tr("ui.section.maintenance"),
-                symbol: "wrench.and.screwdriver")
+            self.settingsCardHeader(self.tr("ui.section.maintenance"))
 
             VStack(alignment: .leading, spacing: T.space4) {
                 HStack(spacing: T.space6) {
@@ -462,15 +456,10 @@ struct SystemTabView: TranslatingView {
             }
             self.coreFollowHint
 
-            if !self.appViewModel.ungroupedConfigOverrideFieldStates.isEmpty {
-                VStack(spacing: 0) {
-                    self.settingsCardHeader(
-                        self.tr("ui.settings.group.general"),
-                        symbol: "slider.horizontal.2.square")
-                    ForEach(self.appViewModel.ungroupedConfigOverrideFieldStates) { state in
-                        self.coreFieldRow(state)
-                    }
-                }
+            // Log level is the most frequently changed field, so it sits above the
+            // groups with no section header of its own.
+            ForEach(self.appViewModel.ungroupedConfigOverrideFieldStates) { state in
+                self.coreFieldRow(state)
             }
 
             ForEach(ConfigOverrideGroup.allCases) { group in
@@ -533,16 +522,16 @@ struct SystemTabView: TranslatingView {
     func coreGroupCard(_ group: ConfigOverrideGroup) -> some View {
         let states = self.appViewModel.configOverrideFieldStates(in: group)
         if !states.isEmpty {
+            let plain = states.filter { !$0.field.isTunSetting }
+            let tun = states.filter(\.field.isTunSetting)
+
             VStack(spacing: 0) {
-                self.settingsCardHeader(self.tr(group.titleKey), symbol: Self.groupSymbol(group))
-                if group == .tun {
-                    self.coreTunModeRow(states)
-                } else {
-                    ForEach(states) { state in
-                        self.coreFieldRow(state)
-                    }
+                self.settingsCardHeader(self.tr(group.titleKey))
+                ForEach(plain) { state in
+                    self.coreFieldRow(state)
                 }
-                if group == .tun {
+                if !tun.isEmpty {
+                    self.coreTunModeRow(tun)
                     self.tunRouteExcludeRow
                 }
             }
@@ -550,6 +539,7 @@ struct SystemTabView: TranslatingView {
     }
 
     /// TUN 开关与协议栈合并为一行：协议栈胶囊在左，开关在右。
+    /// 两个控件各自带悬停反馈，整行不再叠加一层背景。
     func coreTunModeRow(_ states: [ConfigOverrideFieldState]) -> some View {
         let toggle = states.first { $0.field == .tunEnable }
         let hasStack = states.contains { $0.field == .tunStack }
@@ -560,7 +550,12 @@ struct SystemTabView: TranslatingView {
                     .layoutPriority(1)
                 Spacer(minLength: 0)
                 if hasStack {
-                    self.tunStackChips()
+                    TunStackChipsView(
+                        isTunEnabled: self.appViewModel.isTunEnabled,
+                        isInteractionEnabled: !self.coreFieldDisabled)
+                    { option in
+                        Task { await self.appViewModel.selectTunStack(option) }
+                    }
                 }
                 if let toggle {
                     Toggle("", isOn: Binding(
@@ -599,92 +594,53 @@ struct SystemTabView: TranslatingView {
         }
     }
 
-    func tunStackChips() -> some View {
-        HStack(spacing: T.space2) {
-            ForEach(ProxyTabView.tunStackOptions, id: \.self) { option in
-                self.tunStackChip(option)
-            }
-        }
-        .opacity(self.appViewModel.isTunEnabled ? 1 : 0.55)
-        .help(self.tr("ui.quick.tun_stack_switch_hint"))
-    }
-
-    func tunStackChip(_ option: String) -> some View {
-        let active = self.appViewModel.tunStack?.caseInsensitiveCompare(option) == .orderedSame
-        let unsupported = option.caseInsensitiveCompare("mips") == .orderedSame
-            && !self.appViewModel.isMipsStackSupported
-        let enabled = self.coreFieldDisabled == false
-            && self.appViewModel.isTunToggleEnabled
-            && !unsupported
-        let fill = active && self.appViewModel.isTunEnabled
-            ? self.nativePositive.opacity(T.Opacity.tint)
-            : self.nativeBadgeFill
-        let foreground = active && self.appViewModel.isTunEnabled
-            ? self.nativePositive.opacity(T.Opacity.solid)
-            : self.nativeSecondaryLabel
-
-        return Button {
-            guard enabled else { return }
-            Task { await self.appViewModel.selectTunStack(option) }
-        } label: {
-            Text(option)
-                .font(.app(size: T.FontSize.caption, weight: active ? .semibold : .medium))
-                .foregroundStyle(foreground)
-                .lineLimit(1)
-                .padding(.horizontal, T.space4)
-                .padding(.vertical, T.space1)
-                .background {
-                    Capsule(style: .continuous).fill(fill)
-                }
-        }
-        .buttonStyle(.borderless)
-        .disabled(!enabled)
-        .fixedSize()
-        .help(unsupported
-            ? self.tr("app.tun.mips_requires_upgrade", AppViewModel.mipsStackMinimumCoreVersion)
-            : self.tr("ui.quick.tun_stack_switch_hint"))
-    }
-
     var tunRouteExcludeRow: some View {
         let display = self.appViewModel.tunRouteExcludeAddressDisplay
-        return HStack(alignment: .firstTextBaseline, spacing: T.space6) {
-            self.settingsRowLabel(
-                symbol: "arrow.uturn.backward.circle",
-                title: self.tr("ui.settings.route_exclude.title"))
+        return VStack(alignment: .leading, spacing: T.space2) {
+            HStack(spacing: T.space6) {
+                Text(self.tr("ui.settings.route_exclude.title"))
+                    .font(.app(size: T.FontSize.body, weight: .medium))
+                    .foregroundStyle(nativePrimaryLabel)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text(self.tr(display.fromCore
+                    ? "ui.settings.route_exclude.source.core"
+                    : "ui.settings.route_exclude.source.yaml"))
+                    .font(.app(size: T.FontSize.caption, weight: .regular))
+                    .foregroundStyle(nativeTertiaryLabel)
+                    .fixedSize()
+            }
 
-            Spacer(minLength: 0)
+            if display.lines.isEmpty {
+                Text(self.tr("ui.settings.route_exclude.empty"))
+                    .font(.app(size: T.FontSize.caption, weight: .regular))
+                    .foregroundStyle(nativeTertiaryLabel)
+            } else {
+                // Wrap the whole list: truncating an exclusion list defeats the
+                // point of showing which subnets stay out of the tunnel.
+                FlexibleWrapLayout(spacing: T.space4) {
+                    ForEach(display.lines, id: \.self) { line in
+                        Text(line)
+                            .font(.app(size: T.FontSize.caption, weight: .regular))
+                            .foregroundStyle(nativeSecondaryLabel)
+                            .padding(.horizontal, T.space4)
+                            .padding(.vertical, T.space1)
+                            .background {
+                                RoundedRectangle(cornerRadius: T.space4, style: .continuous)
+                                    .fill(self.nativeBadgeFill)
+                            }
+                    }
+                }
+            }
 
-            Text(display.lines.isEmpty
-                ? self.tr("ui.settings.route_exclude.empty")
-                : display.lines.joined(separator: "  "))
-                .font(.app(size: T.FontSize.caption, weight: .regular))
-                .foregroundStyle(display.lines.isEmpty ? self.nativeTertiaryLabel : self.nativeSecondaryLabel)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .layoutPriority(1)
-
-            Text(self.tr(display.fromCore
-                ? "ui.settings.route_exclude.source.core"
-                : "ui.settings.route_exclude.source.yaml"))
+            Text(self.tr("ui.settings.route_exclude.hint"))
                 .font(.app(size: T.FontSize.caption, weight: .regular))
                 .foregroundStyle(nativeTertiaryLabel)
-                .fixedSize()
+                .fixedSize(horizontal: false, vertical: true)
         }
         .menuRowPadding(vertical: T.space4)
-        .help(self.tr("ui.settings.route_exclude.hint"))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(self.tr("ui.settings.route_exclude.title"))
-    }
-
-    static func groupSymbol(_ group: ConfigOverrideGroup) -> String {
-        switch group {
-        case .network:
-            "network"
-        case .ports:
-            "point.3.connected.trianglepath.dotted"
-        case .tun:
-            "shield.lefthalf.filled"
-        }
     }
 
     @ViewBuilder
@@ -704,23 +660,29 @@ struct SystemTabView: TranslatingView {
 
     func coreToggleFieldRow(_ state: ConfigOverrideFieldState) -> some View {
         let setting = Self.coreSetting(for: state.field)
-        return self.coreRow(state) {
-            Toggle("", isOn: Binding(
-                get: { setting.map { self.appViewModel.boolValue(for: $0) } ?? false },
-                set: { value in
-                    guard let setting else { return }
-                    Task { await self.appViewModel.applyEditableCoreSetting(setting, to: value) }
-                }))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .disabled(self.coreFieldDisabled)
-                .accessibilityLabel(self.tr(state.field.titleKey))
+        return Toggle(isOn: Binding(
+            get: { setting.map { self.appViewModel.boolValue(for: $0) } ?? false },
+            set: { value in
+                guard let setting else { return }
+                Task { await self.appViewModel.applyEditableCoreSetting(setting, to: value) }
+            })) {
+            HStack(spacing: T.space6) {
+                self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
+                    .layoutPriority(1)
+                Spacer(minLength: 0)
+                self.coreFieldStatus(state)
+            }
         }
+        .toggleStyle(MenuBarRowToggleStyle(verticalPadding: T.space4))
+        .disabled(self.coreFieldDisabled)
+        .accessibilityLabel(self.tr(state.field.titleKey))
     }
 
     func corePortFieldRow(_ state: ConfigOverrideFieldState) -> some View {
-        self.coreRow(state) {
+        HStack(spacing: T.space6) {
+            self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
+                .layoutPriority(1)
+            Spacer(minLength: 0)
             TextField(self.tr("ui.placeholder.port"), text: Binding(
                 get: {
                     self.appViewModel.editedProxyPorts[state.field.rawValue] ?? Self.portText(state.field, view: self)
@@ -735,67 +697,67 @@ struct SystemTabView: TranslatingView {
                 .multilineTextAlignment(.trailing)
                 .frame(width: self.settingsPortFieldWidth, alignment: .trailing)
                 .onSubmit {
-                    self.appViewModel.editedProxyPorts[state.field.rawValue] =
-                        self.appViewModel.editedProxyPorts[state.field.rawValue]
-                            ?? Self.portText(state.field, view: self)
+                    // Only a real edit should reach the save path; focusing the
+                    // field and pressing return must leave the override untouched.
+                    guard self.appViewModel.editedProxyPorts[state.field.rawValue] != nil else { return }
                     Task { await self.appViewModel.applyProxyPorts() }
                 }
                 .disabled(self.coreFieldDisabled)
+            self.coreFieldStatus(state)
         }
+        .menuRowPadding(vertical: T.space4)
+        .menuBarHover()
     }
 
     func coreLogLevelRow(_ state: ConfigOverrideFieldState) -> some View {
         let current = self.appViewModel.stringValue(for: .logLevel)
-        return self.coreRow(state) {
-            self.coreValueMenu(current, disabled: self.coreFieldDisabled) { dismiss in
-                ForEach(ConfigLogLevel.allCases, id: \.self) { level in
-                    AttachedPopoverMenuItem(
-                        title: level.rawValue,
-                        selected: current.caseInsensitiveCompare(level.rawValue) == .orderedSame)
-                    {
-                        Task { await self.appViewModel.applyEditableCoreSetting(.logLevel, to: level.rawValue) }
-                        dismiss()
-                    }
+        return self.coreMenuRow(state, valueText: current, disabled: self.coreFieldDisabled) { dismiss in
+            ForEach(ConfigLogLevel.allCases, id: \.self) { level in
+                AttachedPopoverMenuItem(
+                    title: level.rawValue,
+                    selected: current.caseInsensitiveCompare(level.rawValue) == .orderedSame)
+                {
+                    Task { await self.appViewModel.applyEditableCoreSetting(.logLevel, to: level.rawValue) }
+                    dismiss()
                 }
             }
         }
     }
 
-    /// One core row: label on the left, then the control and override chip on the
-    /// right edge. The chip follows the control so the interactive element stays
-    /// in a stable position across rows.
-    func coreRow(
+    /// One core row: label on the left, control pinned to the right edge.
+    ///
+    /// Rows that open a menu render as a full-width button so the whole row hovers
+    /// and clicks like the app settings and proxy rows do. The control itself is
+    /// hit-testing disabled so it never splits the click target.
+    func coreMenuRow(
         _ state: ConfigOverrideFieldState,
-        @ViewBuilder control: () -> some View) -> some View
-    {
-        HStack(spacing: T.space6) {
-            self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
-                .layoutPriority(1)
-            Spacer(minLength: 0)
-            control()
-            self.coreFieldStatus(state)
-        }
-        .menuRowPadding(vertical: T.space4)
-    }
-
-    func coreValueMenu(
-        _ value: String,
+        valueText: String,
         disabled: Bool,
+        popoverWidth: CGFloat? = nil,
         @ViewBuilder options: @escaping (_ dismiss: @escaping () -> Void) -> some View) -> some View
     {
-        AttachedPopoverMenu(width: self.settingsPopoverWidth) { _ in
-            HStack(spacing: T.space2) {
-                Text(value)
-                    .foregroundStyle(nativeSecondaryLabel)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Image(systemName: "chevron.right")
-                    .font(.app(size: T.FontSize.caption, weight: .semibold))
-                    .foregroundStyle(nativeTertiaryLabel)
+        AttachedPopoverMenu(
+            width: popoverWidth ?? self.settingsPopoverWidth,
+            expandAnchor: true)
+        { _ in
+            HStack(spacing: T.space6) {
+                self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
+                    .layoutPriority(1)
+                Spacer(minLength: 0)
+                HStack(spacing: T.space2) {
+                    Text(valueText)
+                        .foregroundStyle(nativeSecondaryLabel)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Image(systemName: "chevron.right")
+                        .font(.app(size: T.FontSize.caption, weight: .semibold))
+                        .foregroundStyle(nativeTertiaryLabel)
+                }
+                .font(.app(size: T.FontSize.caption, weight: .medium))
+                .frame(width: self.settingsMenuControlWidth, alignment: .trailing)
+                self.coreFieldStatus(state)
             }
-            .font(.app(size: T.FontSize.caption, weight: .medium))
-            .fixedSize()
-            .contentShape(Rectangle())
+            .menuRowPadding(vertical: T.space4)
         } content: { dismiss in
             options(dismiss)
         }
@@ -817,37 +779,43 @@ struct SystemTabView: TranslatingView {
         }
     }
 
+    /// Fixed width so every row's control lands on the same vertical line, whether
+    /// or not the field is overridden.
+    static let coreStatusColumnWidth: CGFloat = 52
+
     @ViewBuilder
     func coreFieldStatus(
         _ state: ConfigOverrideFieldState,
         showsFieldName: Bool = false) -> some View
     {
-        if state.isOverridden {
-            Button {
-                Task { await self.appViewModel.restoreConfigField(state.field.rawValue) }
-            } label: {
-                Text(self.coreStatusChipText(state, showsFieldName: showsFieldName))
-                    .font(.app(size: T.FontSize.caption, weight: .medium))
-                    .padding(.horizontal, T.space4)
-                    .padding(.vertical, T.space1)
-                    .background {
-                        Capsule(style: .continuous)
-                            .fill(self.coreStatusTint(state).opacity(T.Opacity.tint))
-                    }
+        Group {
+            if state.isOverridden {
+                Button {
+                    Task { await self.appViewModel.restoreConfigField(state.field.rawValue) }
+                } label: {
+                    Text(self.coreStatusChipText(state, showsFieldName: showsFieldName))
+                        .font(.app(size: T.FontSize.caption, weight: .medium))
+                        .padding(.horizontal, T.space4)
+                        .padding(.vertical, T.space1)
+                        .background {
+                            Capsule(style: .continuous)
+                                .fill(self.coreStatusTint(state).opacity(T.Opacity.tint))
+                        }
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(self.coreStatusTint(state).opacity(T.Opacity.solid))
+                .disabled(!self.appViewModel.canRestoreConfigField)
+                .help(self.coreRestoreHelp(state))
+                .accessibilityLabel(self.coreRestoreHelp(state))
+            } else {
+                Text(self.tr("ui.settings.overrides.status.following_short"))
+                    .font(.app(size: T.FontSize.caption, weight: .regular))
+                    .foregroundStyle(self.nativeTertiaryLabel)
+                    .lineLimit(1)
+                    .accessibilityLabel(self.tr("ui.settings.overrides.status.following"))
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(self.coreStatusTint(state).opacity(T.Opacity.solid))
-            .disabled(!self.appViewModel.canRestoreConfigField)
-            .help(self.coreRestoreHelp(state))
-            .fixedSize()
-            .accessibilityLabel(self.coreRestoreHelp(state))
-        } else {
-            Text(self.tr("ui.settings.overrides.status.following_short"))
-                .font(.app(size: T.FontSize.caption, weight: .regular))
-                .foregroundStyle(self.nativeTertiaryLabel)
-                .fixedSize()
-                .accessibilityLabel(self.tr("ui.settings.overrides.status.following"))
         }
+        .frame(width: showsFieldName ? nil : Self.coreStatusColumnWidth, alignment: .trailing)
     }
 
     func coreStatusChipText(_ state: ConfigOverrideFieldState, showsFieldName: Bool) -> String {

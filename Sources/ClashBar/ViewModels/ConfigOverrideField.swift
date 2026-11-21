@@ -3,7 +3,6 @@ import Foundation
 enum ConfigOverrideGroup: String, CaseIterable, Identifiable {
     case network
     case ports
-    case tun
 
     var id: String {
         self.rawValue
@@ -15,8 +14,6 @@ enum ConfigOverrideGroup: String, CaseIterable, Identifiable {
             "ui.settings.group.network"
         case .ports:
             "ui.settings.group.ports"
-        case .tun:
-            "ui.settings.group.tun"
         }
     }
 }
@@ -51,15 +48,19 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
     /// the core section on its own rather than inside a group.
     var group: ConfigOverrideGroup? {
         switch self {
-        case .allowLan, .ipv6, .tcpConcurrent:
+        case .allowLan, .ipv6, .tcpConcurrent, .tunEnable, .tunStack:
             .network
         case .port, .socksPort, .mixedPort, .redirPort, .tproxyPort:
             .ports
-        case .tunEnable, .tunStack:
-            .tun
         case .logLevel:
             nil
         }
+    }
+
+    /// TUN enable and stack render as one combined row, so the group card needs to
+    /// know to leave them out of the ordinary row loop.
+    var isTunSetting: Bool {
+        self == .tunEnable || self == .tunStack
     }
 
     var titleKey: String {

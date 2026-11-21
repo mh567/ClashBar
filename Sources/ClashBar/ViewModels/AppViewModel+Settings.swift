@@ -90,12 +90,25 @@ extension AppViewModel {
         let fields = self.proxyPortFields.compactMap { field in
             self.editedProxyPorts[field.key].map { SettingsPortField(key: field.key, value: $0) }
         }
-        guard ProxyPortsDraft.isAutoSavable(fields),
+        // A field that was opened and left unchanged must not be written back:
+        // patching an identical value would still record a manual override.
+        let changed = ProxyPortsDraft.changedFields(fields, from: self.lastSyncedEditableSettings)
+        let edited = fields.filter { changed.contains($0.key) }
+        for field in fields where !changed.contains(field.key) {
+            self.editedProxyPorts.removeValue(forKey: field.key)
+        }
+        guard !edited.isEmpty else { return }
+
+        // Auto-save is silent, so it waits for every edited field to parse. A
+        // half-typed value keeps its draft and the rest retries on the next edit
+        // instead of being dropped.
+        guard ProxyPortsDraft.isAutoSavable(edited),
               let body = self.validatedPortPatchBody(
-                  fields: fields, errorMessageKey: "app.settings.error.port_range")
+                  fields: edited,
+                  errorMessageKey: "app.settings.error.port_range")
         else { return }
 
-        for field in fields {
+        for field in edited {
             self.editedProxyPorts.removeValue(forKey: field.key)
         }
         await self.patchConfigBody(

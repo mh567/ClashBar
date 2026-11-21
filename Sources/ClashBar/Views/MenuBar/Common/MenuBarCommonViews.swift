@@ -415,6 +415,17 @@ extension View {
             .fill(hovered ? self.nativeHoverFill : .clear)
     }
 
+    /// Row highlight matching `MenuBarInteractionStyle`, so a row that is not a
+    /// button still hovers like one. `nativeHoverFill` is an opaque system
+    /// selection color, which reads as "selected" rather than "hovered".
+    func nativeActionRowBackground(
+        _ hovered: Bool,
+        cornerRadius: CGFloat = T.cornerRadius) -> some View
+    {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(hovered ? Color.accentColor.opacity(self.isDarkAppearance ? 0.22 : 0.14) : .clear)
+    }
+
     func nativeBadgeCapsule() -> some View {
         Capsule(style: .continuous).fill(self.nativeBadgeFill)
     }

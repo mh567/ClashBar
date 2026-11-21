@@ -39,4 +39,21 @@ enum ProxyPortsDraft {
             $0.value.trimmed != self.baselineValue(forKey: $0.key, in: snapshot).trimmed
         }
     }
+
+    /// Keys whose draft actually differs from the last applied snapshot.
+    ///
+    /// Opening a port field and leaving it untouched must not produce a PATCH: the
+    /// write would succeed with an identical value and still be recorded as a
+    /// manual override, pinning the port against subscription updates.
+    static func changedFields(
+        _ fields: [SettingsPortField],
+        from snapshot: EditableSettingsSnapshot?) -> Set<String>
+    {
+        guard let snapshot else { return Set(fields.map(\.key)) }
+        return Set(fields.compactMap { field in
+            field.value.trimmed == self.baselineValue(forKey: field.key, in: snapshot).trimmed
+                ? nil
+                : field.key
+        })
+    }
 }

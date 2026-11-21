@@ -84,6 +84,22 @@ final class ConfigOverridesTests: XCTestCase {
         XCTAssertEqual(ungrouped, [.logLevel], "log level is shown on its own, above the groups")
     }
 
+
+    func testRouteExcludeSurvivesYAMLAnchorMerge() throws {
+        let yaml = """
+        defaults: &tun-defaults
+          enable: false
+          route-exclude-address:
+            - 10.0.0.0/8
+            - 192.168.0.0/16
+        tun:
+          <<: *tun-defaults
+          stack: mixed
+        """
+        let parsed = try ConfigReloadAction.parse(yaml)
+        XCTAssertEqual(parsed.tunRouteExcludeAddress, ["10.0.0.0/8", "192.168.0.0/16"])
+    }
+
     func testTunRouteExcludeAddressIsReadFromYAML() throws {
         let yaml = """
         tun:
@@ -183,7 +199,6 @@ final class ConfigOverridesTests: XCTestCase {
             "ui.settings.overrides.status.unconfirmed_short",
             "ui.settings.overrides.status.following_short",
             "ui.settings.overrides.status.chip_named",
-            "ui.settings.group.general",
             "ui.settings.overrides.status.following",
             "ui.settings.overrides.item.restore_help_with_declared",
             "ui.settings.overrides.restore_all",
