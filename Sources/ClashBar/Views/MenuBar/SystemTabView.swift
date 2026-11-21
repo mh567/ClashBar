@@ -48,12 +48,14 @@ struct SystemTabView: TranslatingView {
         .menuRowPadding(vertical: T.space2)
     }
 
+    static let settingsRowIconWidth: CGFloat = 14
+
     func settingsRowLabel(symbol: String, title: String) -> some View {
         HStack(spacing: T.space6) {
             Image(systemName: symbol)
                 .font(.app(size: T.FontSize.caption, weight: .semibold))
                 .foregroundStyle(nativeTertiaryLabel)
-                .frame(width: 14, alignment: .center)
+                .frame(width: Self.settingsRowIconWidth, alignment: .center)
             Text(title)
                 .font(.app(size: T.FontSize.body, weight: .medium))
                 .foregroundStyle(nativePrimaryLabel)
@@ -274,7 +276,6 @@ struct SystemTabView: TranslatingView {
                     optionTitle: self.appearanceModeLabel,
                     isSelected: { self.appViewModel.appearanceMode == $0 },
                     onSelect: self.appViewModel.setAppearanceMode))
-                self.currentCoreModeRow
                 self.settingsURLFieldRow(
                     self.tr("ui.settings.direct_healthcheck_url"),
                     symbol: "arrow.triangle.branch",
@@ -322,20 +323,6 @@ struct SystemTabView: TranslatingView {
 
             self.maintenanceSection
         }
-    }
-
-    var currentCoreModeRow: some View {
-        HStack(spacing: T.space6) {
-            self.settingsRowLabel(symbol: "shield.lefthalf.filled", title: self.tr("ui.banner.mode.title"))
-                .layoutPriority(1)
-            Spacer(minLength: 0)
-            Text(self.coreModeLabel(self.appViewModel.currentMode))
-                .font(.app(size: T.FontSize.caption, weight: .medium))
-                .foregroundStyle(nativeSecondaryLabel)
-                .lineLimit(1)
-        }
-        .menuRowPadding(vertical: T.space4)
-        .help(self.tr("ui.settings.core_mode.hint"))
     }
 
     var systemProxyExceptionsEditor: some View {
@@ -641,6 +628,8 @@ struct SystemTabView: TranslatingView {
         }
     }
 
+    static let settingsRowTextInset: CGFloat = Self.settingsRowIconWidth + T.space6
+
     var tunRouteExcludeRow: some View {
         let display = self.appViewModel.tunRouteExcludeAddressDisplay
         return VStack(alignment: .leading, spacing: T.space2) {
@@ -657,11 +646,13 @@ struct SystemTabView: TranslatingView {
                     .foregroundStyle(nativeTertiaryLabel)
                     .fixedSize()
             }
+            .padding(.leading, Self.settingsRowTextInset)
 
             if display.lines.isEmpty {
                 Text(self.tr("ui.settings.route_exclude.empty"))
                     .font(.app(size: T.FontSize.caption, weight: .regular))
                     .foregroundStyle(nativeTertiaryLabel)
+                    .padding(.leading, Self.settingsRowTextInset)
             } else {
                 // Wrap the whole list: truncating an exclusion list defeats the
                 // point of showing which subnets stay out of the tunnel.
@@ -678,12 +669,14 @@ struct SystemTabView: TranslatingView {
                             }
                     }
                 }
+                .padding(.leading, Self.settingsRowTextInset)
             }
 
             Text(self.tr("ui.settings.route_exclude.hint"))
                 .font(.app(size: T.FontSize.caption, weight: .regular))
                 .foregroundStyle(nativeTertiaryLabel)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, Self.settingsRowTextInset)
         }
         .menuRowPadding(vertical: T.space4)
         .accessibilityElement(children: .combine)
@@ -699,11 +692,31 @@ struct SystemTabView: TranslatingView {
             self.corePortFieldRow(state)
         case .logLevel:
             self.coreLogLevelRow(state)
+        case .mode:
+            self.coreModeRow(state)
         case .tunEnable, .tunStack:
             // Rendered together by `coreTunModeRow`.
             EmptyView()
         }
     }
+
+    func coreModeRow(_ state: ConfigOverrideFieldState) -> some View {
+        let current = self.appViewModel.coreSettingValue(.mode)
+        return self.coreMenuRow(state, valueText: self.coreSettingText(.mode))
+        { dismiss in
+            ForEach(Self.modeOptions, id: \.self) { mode in
+                AttachedPopoverMenuItem(
+                    title: ConfigOverrideField.modeText(mode.rawValue, language: self.language),
+                    selected: current == .string(mode.rawValue))
+                {
+                    self.appViewModel.stageCoreSetting(.mode, value: .string(mode.rawValue))
+                    dismiss()
+                }
+            }
+        }
+    }
+
+    static let modeOptions: [CoreMode] = [.rule, .global, .direct]
 
     func coreToggleFieldRow(_ state: ConfigOverrideFieldState) -> some View {
         HStack(spacing: 0) {
@@ -748,25 +761,28 @@ struct SystemTabView: TranslatingView {
 
     func coreLogLevelRow(_ state: ConfigOverrideFieldState) -> some View {
         let current = self.coreSettingText(.logLevel)
-        return HStack(spacing: T.space6) {
-            self.settingsMenuRow(
-                self.tr(state.field.titleKey),
-                symbol: state.field.symbol,
-                valueText: current,
-                popoverWidth: self.settingsPopoverWidth)
-            { dismiss in
-                ForEach(ConfigLogLevel.allCases, id: \.self) { level in
-                    AttachedPopoverMenuItem(
-                        title: level.rawValue,
-                        selected: current.caseInsensitiveCompare(level.rawValue) == .orderedSame)
-                    {
-                        self.appViewModel.stageCoreSetting(.logLevel, value: .string(level.rawValue))
-                        dismiss()
-                    }
+        return self.coreMenuRow(state, valueText: current) { dismiss in
+            ForEach(ConfigLogLevel.allCases, id: \.self) { level in
+                AttachedPopoverMenuItem(
+                    title: level.rawValue,
+                    selected: current.caseInsensitiveCompare(level.rawValue) == .orderedSame)
+                {
+                    self.appViewModel.stageCoreSetting(.logLevel, value: .string(level.rawValue))
+                    dismiss()
                 }
             }
-            .disabled(self.coreFieldDisabled)
+        }
+    }
 
+    func coreMenuRow(
+        _ state: ConfigOverrideFieldState, valueText: String,
+        @ViewBuilder options: @escaping (_ dismiss: @escaping () -> Void) -> some View
+    ) -> some View {
+        HStack(spacing: T.space6) {
+            self.settingsMenuRow(
+                self.tr(state.field.titleKey), symbol: state.field.symbol, valueText: valueText,
+                options: options)
+                .disabled(self.coreFieldDisabled)
             self.coreFieldStatus(state)
                 .padding(.trailing, T.space8)
         }
@@ -855,10 +871,6 @@ struct SystemTabView: TranslatingView {
 
     var coreFieldDisabled: Bool {
         !self.appViewModel.canApplyCoreSettings
-    }
-
-    var settingsPopoverWidth: CGFloat {
-        min(300, T.panelWidth - (T.space8 * 2))
     }
 
     // MARK: - Rows and helpers
@@ -971,17 +983,6 @@ struct SystemTabView: TranslatingView {
                     radius: T.Shadow.standard.radius,
                     x: T.Shadow.standard.x,
                     y: T.Shadow.standard.y)
-        }
-    }
-
-    func coreModeLabel(_ mode: CoreMode) -> String {
-        switch mode {
-        case .rule:
-            self.tr("ui.mode.rule")
-        case .global:
-            self.tr("ui.mode.global")
-        case .direct:
-            self.tr("ui.mode.direct")
         }
     }
 

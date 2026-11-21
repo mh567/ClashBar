@@ -25,6 +25,9 @@ extension AppViewModel {
             let parsed = ProxyPortsDraft.parsedPort(text)
             self.coreSettingsEdits[field] = parsed != nil && parsed == ProxyPortsDraft.parsedPort(current)
                 ? nil : value
+        } else if field == .mode, !self.isRemoteTarget {
+            let alreadyPinned = ConfigOverrides.matches(value, self.activeConfigOverrides[field.rawValue])
+            self.coreSettingsEdits[field] = alreadyPinned && ConfigOverrides.matches(value, runtime) ? nil : value
         } else {
             self.coreSettingsEdits[field] = ConfigOverrides.matches(value, runtime) ? nil : value
         }
@@ -103,6 +106,7 @@ extension AppViewModel {
 
     func syncEditableSettings(from config: ConfigSnapshot) {
         let incoming = EditableSettingsSnapshot(config: config)
+            .withTunEnabled(self.isAwaitingTunRecovery ? self.isTunEnabled : nil)
 
         guard let previous = lastSyncedEditableSettings else {
             self.applyEditableSettingsSnapshotToUI(incoming)
@@ -112,15 +116,14 @@ extension AppViewModel {
         }
 
         suppressSettingsPersistence = true
-        self.syncEditableFields(
-            from: previous,
-            to: incoming,
-            fields: [
-                (\.settingsAllowLan, \.allowLan),
-                (\.settingsIPv6, \.ipv6),
-                (\.settingsTCPConcurrent, \.tcpConcurrent),
-                (\.isTunEnabled, \.tunEnabled),
-            ])
+        self.isTunEnabled = incoming.tunEnabled
+
+        let boolFields: [(ReferenceWritableKeyPath<AppViewModel, Bool>, KeyPath<EditableSettingsSnapshot, Bool>)] = [
+            (\.settingsAllowLan, \.allowLan),
+            (\.settingsIPv6, \.ipv6),
+            (\.settingsTCPConcurrent, \.tcpConcurrent),
+        ]
+        self.syncEditableFields(from: previous, to: incoming, fields: boolFields)
 
         self.syncEditableFields(
             from: previous,
@@ -135,8 +138,8 @@ extension AppViewModel {
             ])
         suppressSettingsPersistence = false
 
-        lastSyncedEditableSettings = incoming
-        persistEditableSettingsSnapshot()
+        self.lastSyncedEditableSettings = incoming
+        self.persistEditableSettingsSnapshot()
     }
 
     func currentEditableSettingsSnapshot() -> EditableSettingsSnapshot {

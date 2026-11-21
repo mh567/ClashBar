@@ -17,6 +17,15 @@ extension AppViewModel {
         guard !self.isConfigMutationBusy else { return }
         let overrideID = self.activeConfigOverrideID
 
+        let applied = await self.applyTunMode(enabled, requestPermissionsIfMissing: true)
+        guard applied else { return }
+        self.recordConfigOverrides(["tun.enable": .bool(enabled)], for: overrideID)
+    }
+
+    /// Applies the TUN switch without recording an override. Recovery and other
+    /// internal transitions use this; only an explicit user toggle records one.
+    @discardableResult
+    func applyTunMode(_ enabled: Bool, requestPermissionsIfMissing: Bool) async -> Bool {
         self.isTunSyncing = true
         self.configReadEpoch = UUID()
         defer {
@@ -26,30 +35,30 @@ extension AppViewModel {
 
         do {
             if enabled, !self.isRemoteTarget {
-                try await self.ensureTunPermissions(requestIfMissing: true)
+                try await self.ensureTunPermissions(requestIfMissing: requestPermissionsIfMissing)
             }
 
-            guard self.isRemoteTarget || self.isRuntimeRunning else { return }
+            guard self.isRemoteTarget || self.isRuntimeRunning else { return false }
             try await self.patchTunConfig(enable: enabled)
 
             let config = try await fetchRuntimeConfigSnapshot()
-            let actualState = config.tunEnabled ?? false
-            isTunEnabled = actualState
+            isTunEnabled = config.tunEnabled ?? false
             persistEditableSettingsSnapshot()
 
-            if config.tunEnabled == enabled {
-                self.recordConfigOverrides(["tun.enable": .bool(enabled)], for: overrideID)
-                appendLog(
-                    level: "info",
-                    message: tr("log.tun.toggled", enabled ? tr("log.tun.enabled") : tr("log.tun.disabled")))
-            } else {
+            guard config.tunEnabled == enabled else {
                 appendLog(
                     level: "error",
                     message: tr("log.tun.toggle_failed", tr("app.tun.error.runtime_state_mismatch")))
+                return false
             }
+            appendLog(
+                level: "info",
+                message: tr("log.tun.toggled", enabled ? tr("log.tun.enabled") : tr("log.tun.disabled")))
+            return true
         } catch {
             appendLog(level: "error", message: tr("log.tun.toggle_failed", self.tunErrorMessage(error)))
             await self.refreshTunStatusFromRuntimeConfig()
+            return false
         }
     }
 

@@ -496,7 +496,6 @@
 "ui.settings.section.core" = "Core settings";
 "ui.settings.group.network" = "Network";
 "ui.settings.group.ports" = "Proxy ports";
-"ui.settings.core_mode.hint" = "The proxy mode is switched from the top bar and never stored as a field override.";
 "ui.settings.overrides.item.restore_help" = "Stage a restore of “%@” to the configured value";
 "ui.settings.tun_stack" = "TUN stack";
 "ui.state.on" = "On";

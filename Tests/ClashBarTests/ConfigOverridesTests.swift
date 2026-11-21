@@ -54,23 +54,9 @@ final class ConfigOverridesTests: XCTestCase {
         XCTAssertNil(ConfigOverrideField.tunEnable.valueText(.object([:]), language: .en))
     }
 
-    func testModeIsNeverPersistedAsAnOverride() {
-        XCTAssertFalse(ConfigOverrideField.isPersistableKey("mode"))
-        XCTAssertTrue(ConfigOverrideField.allCases.allSatisfy { ConfigOverrideField.isPersistableKey($0.rawValue) })
-        XCTAssertTrue(ConfigOverrideField.isPersistableKey("mixed-port"))
-    }
-
-    func testModeIsDroppedButOtherFieldsSurviveRecordFiltering() {
-        XCTAssertEqual(
-            ConfigOverrides.persistableFields(from: ["mode": .string("global")]),
-            [:])
-        XCTAssertEqual(
-            ConfigOverrides.persistableFields(from: [
-                "mode": .string("global"),
-                "mixed-port": .int(7891),
-                "tun.enable": .bool(false),
-            ]),
-            ["mixed-port": .int(7891), "tun.enable": .bool(false)])
+    func testModeIsPersistableOnExplicitSaveButNotOnRuntimeSwitch() {
+        XCTAssertTrue(ConfigOverrideField.isPersistableOnRuntimeChange("mixed-port"))
+        XCTAssertFalse(ConfigOverrideField.isPersistableOnRuntimeChange("mode"))
     }
 
     func testEveryFieldHasAtMostOneGroupAndGroupsPartitionTheRest() {
@@ -81,7 +67,7 @@ final class ConfigOverridesTests: XCTestCase {
 
         let ungrouped = ConfigOverrideField.allCases.filter { $0.group == nil }
         XCTAssertEqual(Set(grouped).union(ungrouped), Set(ConfigOverrideField.allCases))
-        XCTAssertEqual(ungrouped, [.logLevel], "log level is shown on its own, above the groups")
+        XCTAssertEqual(ungrouped, [.logLevel, .mode], "log level and mode sit above the groups")
     }
 
 
@@ -149,29 +135,14 @@ final class ConfigOverridesTests: XCTestCase {
         return AppViewModel(dependencies: .live, defaults: defaults)
     }
 
-    @MainActor
-    func testLegacyModeOverrideIsPrunedOnLoad() {
-        let model = self.makeIsolatedModel()
-        let id = UUID()
-        model.configOverrides.identities["/config/a.yaml"] = id
-        model.configOverrides.values[id] = ["mode": .string("global"), "mixed-port": .int(7891)]
+    func testRuntimeChangeFiltersTransientKeysWhileExplicitSaveKeepsThem() {
+        let values: [String: ConfigPatchValue] = ["mode": .string("global"), "mixed-port": .int(7891)]
 
-        model.pruneNonPersistableConfigOverrides()
+        let runtime = ConfigOverrides.filteredForOrigin(values, origin: .runtimeAction)
+        XCTAssertEqual(runtime, ["mixed-port": .int(7891)])
 
-        XCTAssertNil(model.configOverrides.values[id]?["mode"])
-        XCTAssertEqual(model.configOverrides.values[id]?["mixed-port"], .int(7891))
-    }
-
-    @MainActor
-    func testPruneDropsRecordThatOnlyHeldMode() {
-        let model = self.makeIsolatedModel()
-        let id = UUID()
-        model.configOverrides.identities["/config/a.yaml"] = id
-        model.configOverrides.values[id] = ["mode": .string("direct")]
-
-        model.pruneNonPersistableConfigOverrides()
-
-        XCTAssertNil(model.configOverrides.values[id])
+        let explicit = ConfigOverrides.filteredForOrigin(values, origin: .explicitSave)
+        XCTAssertEqual(explicit, values)
     }
 
     @MainActor
@@ -190,9 +161,14 @@ final class ConfigOverridesTests: XCTestCase {
 
         model.stageCoreSetting(.allowLan, value: .bool(false))
         XCTAssertEqual(model.pendingCoreSettingsCount, 1)
-        model.discardCoreSettings()
+        model.stageCoreSetting(.mixedPort, value: .string(" 07890 "))
         XCTAssertEqual(model.pendingCoreSettingsCount, 0)
         XCTAssertEqual(model.coreSettingValue(.mixedPort), .string("7890"))
+
+        model.stageCoreSetting(.mode, value: .string(model.currentMode.rawValue))
+        XCTAssertEqual(model.pendingCoreSettingsCount, 1)
+        model.discardCoreSettings()
+        XCTAssertEqual(model.pendingCoreSettingsCount, 0)
     }
 
     @MainActor
@@ -241,7 +217,6 @@ final class ConfigOverridesTests: XCTestCase {
             "ui.settings.section.app",
             "ui.settings.section.core",
             "ui.settings.core_remote_hint",
-            "ui.settings.core_mode.hint",
             "ui.settings.route_exclude.title",
             "ui.settings.route_exclude.source.yaml",
             "ui.settings.route_exclude.source.core",

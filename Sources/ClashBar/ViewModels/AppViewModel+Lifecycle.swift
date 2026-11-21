@@ -476,8 +476,16 @@ extension AppViewModel {
         self.mergeCoreFeatureRecoveryStates(
             CoreFeatureRecoveryState(
                 systemProxyEnabled: self.isSystemProxyEnabled,
-                tunEnabled: self.isTunEnabled),
+                tunEnabled: self.isTunEnabled,
+                tunConfigPath: self.runningTunConfigPath),
             self.pendingCoreFeatureRecoveryState)
+    }
+
+    private var runningTunConfigPath: String? {
+        if let path = self.runtimeConfigInput?.selectedPath {
+            return ConfigOverrides.pathKey(for: URL(fileURLWithPath: path))
+        }
+        return self.configService.selectedConfig.map(ConfigOverrides.pathKey(for:))
     }
 
     private func mergeCoreFeatureRecoveryStates(
@@ -486,7 +494,8 @@ extension AppViewModel {
     {
         CoreFeatureRecoveryState(
             systemProxyEnabled: (first?.systemProxyEnabled ?? false) || (second?.systemProxyEnabled ?? false),
-            tunEnabled: (first?.tunEnabled ?? false) || (second?.tunEnabled ?? false))
+            tunEnabled: (first?.tunEnabled ?? false) || (second?.tunEnabled ?? false),
+            tunConfigPath: first?.tunEnabled == true ? first?.tunConfigPath : second?.tunConfigPath)
     }
 
     private func prepareCoreFeatureRecoveryBeforeCoreTransition(
@@ -497,7 +506,8 @@ extension AppViewModel {
         let runtimeRunningBeforeTransition = self.isRuntimeRunning
         let capturedRecovery = CoreFeatureRecoveryState(
             systemProxyEnabled: runtimeRunningBeforeTransition && self.isSystemProxyEnabled,
-            tunEnabled: runtimeRunningBeforeTransition && self.isTunEnabled)
+            tunEnabled: runtimeRunningBeforeTransition && self.isTunEnabled,
+            tunConfigPath: self.runningTunConfigPath)
 
         let baseRecovery: CoreFeatureRecoveryState = if capturedRecovery.shouldRecoverAnyFeature {
             capturedRecovery
@@ -596,6 +606,10 @@ extension AppViewModel {
                 await self.refreshSystemProxyHelperStatus()
                 await self.refreshSystemProxyStatus()
             }
+        }
+
+        if self.shouldRecoverTunForSelectedConfig {
+            await self.applyTunMode(true, requestPermissionsIfMissing: false)
         }
 
         let remaining = CoreFeatureRecoveryState(

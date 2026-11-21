@@ -17,6 +17,18 @@ extension AppViewModel {
         self.tunRouteExcludeAddress = nil
     }
 
+    /// True while a pending recovery owns the TUN state, so a core that still
+    /// reports its startup default must not overwrite the switch.
+    var isAwaitingTunRecovery: Bool {
+        self.shouldRecoverTunForSelectedConfig || self.isTunSyncing
+    }
+
+    var shouldRecoverTunForSelectedConfig: Bool {
+        guard !self.isRemoteTarget, let recovery = self.pendingCoreFeatureRecoveryState, recovery.tunEnabled
+        else { return false }
+        return recovery.tunConfigPath == self.configService.selectedConfig.map(ConfigOverrides.pathKey(for:))
+    }
+
     var configApplicationOutcome: ConfigApplicationOutcome {
         guard self.configApplicationLoaded else { return .failed }
         return self.configApplicationFailure == nil && self.configApplicationIssues.isEmpty ? .applied : .partial
@@ -231,7 +243,9 @@ extension AppViewModel {
         let baseline = try await self.fetchRuntimeConfigSnapshot()
         // Reloading YAML resets the temporary proxy mode unless it is reapplied with the overrides.
         var runtimeOverrides = intended
-        runtimeOverrides["mode"] = baseline.overrideFields["mode"]
+        if edits["mode"] == nil, !keys.contains("mode") {
+            runtimeOverrides["mode"] = baseline.overrideFields["mode"] ?? intended["mode"]
+        }
         let tun = ConfigOverrideField.tunEnable.rawValue
         let desiredTun = intended[tun] ?? declared[tun]
         if desiredTun == .bool(true), edits[tun] != nil || edits[ConfigOverrideField.tunStack.rawValue] != nil {

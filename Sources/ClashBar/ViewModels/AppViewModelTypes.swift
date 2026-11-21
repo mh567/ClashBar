@@ -253,6 +253,13 @@ struct StatusItemBanner: Equatable, Identifiable {
 struct CoreFeatureRecoveryState {
     let systemProxyEnabled: Bool
     let tunEnabled: Bool
+    let tunConfigPath: String?
+
+    init(systemProxyEnabled: Bool, tunEnabled: Bool, tunConfigPath: String? = nil) {
+        self.systemProxyEnabled = systemProxyEnabled
+        self.tunEnabled = tunEnabled
+        self.tunConfigPath = tunConfigPath
+    }
 
     var shouldRecoverAnyFeature: Bool {
         self.systemProxyEnabled || self.tunEnabled
@@ -324,6 +331,22 @@ struct EditableSettingsSnapshot: Equatable, Codable {
         self.mixedPort = mixedPort
         self.redirPort = redirPort
         self.tproxyPort = tproxyPort
+    }
+
+    func withTunEnabled(_ tunEnabled: Bool?) -> EditableSettingsSnapshot {
+        guard let tunEnabled else { return self }
+        return EditableSettingsSnapshot(
+            mode: self.mode,
+            allowLan: self.allowLan,
+            ipv6: self.ipv6,
+            tcpConcurrent: self.tcpConcurrent,
+            tunEnabled: tunEnabled,
+            logLevel: self.logLevel,
+            port: self.port,
+            socksPort: self.socksPort,
+            mixedPort: self.mixedPort,
+            redirPort: self.redirPort,
+            tproxyPort: self.tproxyPort)
     }
 
     init(from decoder: Decoder) throws {

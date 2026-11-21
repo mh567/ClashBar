@@ -38,7 +38,7 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             XCTAssertEqual(afterFailure.mixedPort, next)
             model.discardCoreSettings()
 
-            await model.patchSingleConfig("mode", value: .string("global"))
+            await model.switchMode(to: .global)
             model.stageCoreSettingsRestore(Set(model.activeConfigOverrides.keys))
             model.stageCoreSetting(.logLevel, value: .string("info"))
             let beforeRestore = try await model.fetchRuntimeConfigSnapshot()
@@ -57,6 +57,45 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             XCTAssertEqual(restored.logLevel, "info")
             XCTAssertEqual(restored.mode, "global")
             XCTAssertEqual(model.runtimeConfigInput?.yaml, try String(contentsOf: selected, encoding: .utf8))
+
+            model.stageCoreSettingsRestore(["log-level"])
+            model.stageCoreSetting(.mode, value: .string("direct"))
+            XCTAssertEqual(model.currentMode, .global)
+            await model.applyCoreSettings()
+            XCTAssertNil(model.coreSettingsError)
+            XCTAssertEqual(model.currentMode, .direct)
+            XCTAssertEqual(model.activeConfigOverrides, ["mode": .string("direct")])
+
+            await model.switchMode(to: .global)
+            XCTAssertEqual(model.activeConfigOverrides, ["mode": .string("direct")])
+            model.stageCoreSettingsRestore(Set(model.activeConfigOverrides.keys))
+            await model.applyCoreSettings()
+            XCTAssertNil(model.coreSettingsError)
+            XCTAssertEqual(model.currentMode, original.mode.flatMap(CoreMode.init(rawValue:)))
+            XCTAssertTrue(model.activeConfigOverrides.isEmpty)
+            await model.stopCore()
+        }
+    }
+
+    @MainActor
+    func testConfigSwitchDoesNotRecoverTunForThePreviousConfig() async throws {
+        try await self.withRunningCore { model, selected, nextFile, controller, nextPort, _ in
+            try Self.config(controller: controller, mixedPort: nextPort).write(
+                to: nextFile, atomically: true, encoding: .utf8)
+            model.pendingCoreFeatureRecoveryState = CoreFeatureRecoveryState(
+                systemProxyEnabled: false, tunEnabled: true, tunConfigPath: ConfigOverrides.pathKey(for: selected))
+            XCTAssertTrue(model.isAwaitingTunRecovery)
+
+            model.configService.selectConfig(nextFile)
+            XCTAssertFalse(model.isAwaitingTunRecovery)
+            model.configService.selectConfig(selected)
+            await model.selectConfigFile(named: nextFile.lastPathComponent)
+            XCTAssertEqual(model.selectedConfigName, nextFile.lastPathComponent)
+            XCTAssertFalse(model.isTunEnabled)
+            XCTAssertNil(model.pendingCoreFeatureRecoveryState)
+            XCTAssertTrue(model.activeConfigOverrides.isEmpty)
+            let config = try await model.fetchRuntimeConfigSnapshot()
+            XCTAssertEqual(config.tunEnabled, false)
             await model.stopCore()
         }
     }

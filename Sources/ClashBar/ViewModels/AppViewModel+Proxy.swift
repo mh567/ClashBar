@@ -6,7 +6,7 @@ extension AppViewModel {
         guard self.isModeSwitchEnabled, !self.modeSwitchInFlight else { return }
         self.modeSwitchInFlight = true
         defer { self.modeSwitchInFlight = false }
-        await self.patchSingleConfig("mode", value: .string(target.rawValue))
+        await self.patchSingleConfig("mode", value: .string(target.rawValue), origin: .runtimeAction)
     }
 
     func toggleSystemProxy(_ enabled: Bool) async {

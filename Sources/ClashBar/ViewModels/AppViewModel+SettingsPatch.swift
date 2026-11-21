@@ -31,11 +31,15 @@ extension AppViewModel {
         suppressSettingsPersistence = false
     }
 
-    func patchSingleConfig(_ key: String, value: ConfigPatchValue) async {
+    func patchSingleConfig(
+        _ key: String, value: ConfigPatchValue,
+        origin: ConfigOverrideOrigin = .explicitSave) async
+    {
         _ = await self.patchConfigBody(
             [key: value],
             syncingKey: key,
-            successMessage: tr("app.settings.saved.single_key", key))
+            successMessage: tr("app.settings.saved.single_key", key),
+            origin: origin)
     }
 
     @discardableResult
@@ -43,7 +47,8 @@ extension AppViewModel {
         _ body: [String: ConfigPatchValue],
         syncingKey: String,
         successMessage: String,
-        isCoreSettingsBatch: Bool = false) async -> Bool
+        isCoreSettingsBatch: Bool = false,
+        origin: ConfigOverrideOrigin = .explicitSave) async -> Bool
     {
         guard !self.isConfigMutationBusy, self.isRemoteTarget || self.isRuntimeRunning else { return false }
         let overrideID = self.activeConfigOverrideID
@@ -85,7 +90,7 @@ extension AppViewModel {
             guard expected.allSatisfy({ ConfigOverrides.matches($0.value, observed.overrideFields[$0.key]) }) else {
                 throw ConfigApplicationError.unverified
             }
-            self.recordConfigOverrides(body, for: overrideID)
+            self.recordConfigOverrides(body, for: overrideID, origin: origin)
             settingsSavedMessage = successMessage
             self.scheduleSettingsFeedbackAutoClearIfNeeded(message: successMessage)
             await self.syncSystemProxyPortIfNeeded(
@@ -203,6 +208,7 @@ extension AppViewModel {
         do {
             let config = try await self.fetchRuntimeConfigSnapshot()
             let incoming = EditableSettingsSnapshot(config: config)
+                .withTunEnabled(self.isAwaitingTunRecovery ? self.isTunEnabled : nil)
             self.applyEditableSettingsSnapshotToUI(incoming)
             self.lastSyncedEditableSettings = incoming
             self.persistEditableSettingsSnapshot()

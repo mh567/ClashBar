@@ -57,10 +57,12 @@ struct ConfigOverrides: Codable, Equatable {
         return expected == actual
     }
 
-    static func persistableFields(
-        from values: [String: ConfigPatchValue]) -> [String: ConfigPatchValue]
+    static func filteredForOrigin(
+        _ values: [String: ConfigPatchValue],
+        origin: ConfigOverrideOrigin) -> [String: ConfigPatchValue]
     {
-        values.filter { key, _ in ConfigOverrideField.isPersistableKey(key) }
+        guard origin == .runtimeAction else { return values }
+        return values.filter { key, _ in ConfigOverrideField.isPersistableOnRuntimeChange(key) }
     }
 
     static func request(
@@ -152,30 +154,24 @@ extension AppViewModel {
         return renames
     }
 
+    /// Records overrides produced by an explicit settings change.
     func recordConfigOverrides(_ values: [String: ConfigPatchValue], for id: UUID?) {
+        self.recordConfigOverrides(values, for: id, origin: .explicitSave)
+    }
+
+    /// Records overrides produced by a runtime action such as the top-bar mode
+    /// switch. Those must not pin transient fields.
+    func recordConfigOverrides(
+        _ values: [String: ConfigPatchValue], for id: UUID?, origin: ConfigOverrideOrigin)
+    {
         guard let id, id == self.activeConfigOverrideID else { return }
-        let persistable = ConfigOverrides.persistableFields(from: values)
+        let persistable = ConfigOverrides.filteredForOrigin(values, origin: origin)
         guard !persistable.isEmpty else { return }
         self.configOverrides.values[id, default: [:]].merge(persistable) { _, new in new }
         self.runtimeConfigInput?.overrides = self.configOverrides.values[id] ?? [:]
         self.persistConfigOverrides()
     }
 
-    /// Older builds stored `mode` as an override when the proxy mode was switched.
-    /// Drop those records once so the mode follows the configuration again.
-    func pruneNonPersistableConfigOverrides() {
-        var removedAny = false
-        for (id, values) in self.configOverrides.values {
-            let kept = ConfigOverrides.persistableFields(from: values)
-            guard kept.count != values.count else { continue }
-            self.configOverrides.values[id] = kept.isEmpty ? nil : kept
-            removedAny = true
-        }
-        if removedAny {
-            self.persistConfigOverrides()
-            self.runtimeConfigInput?.overrides = self.activeConfigOverrides
-        }
-    }
 }
 
 extension ConfigSnapshot {
