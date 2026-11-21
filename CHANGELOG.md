@@ -1,3 +1,28 @@
+## v1.1.11
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.11-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 修复端口输入框点一下就变成手动覆盖的问题，并统一设置页与代理页的交互细节。
+
+### 📝 更新日志 (Changelog)
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **TUN 归入网络分组**：内核设置不再单独保留 TUN 组，网络组内依次是网络开关、TUN 与排除网段。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **分组标题精简**：设置页各分组标题不再带前置图标，日志级别不再归入分组。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **内核行交互对齐**：悬停效果、控件右对齐与状态胶囊位置和代理页保持一致。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **TUN 排除网段完整展示**：每个网段独立成标签并自动换行，长列表不再被截断。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **代理提供者悬停**：改用强调色高亮，与配置管理、系统代理的观感一致。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **端口误覆写**：点进端口输入框即使用户没有改动，也会写入手动覆盖。现在只有内容真正变化才提交。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **端口保存被阻塞**：某个端口正在输入时，其他已改好的端口也无法保存。现在只校验与提交真正改动的字段。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **协议栈切换不一致**：代理页与设置页的 TUN 协议栈表现不同，现已共用同一实现。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **排除网段前的多余图标**：移除了一个无关的返回箭头。
+
+---
+
 ## v1.1.10
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.10-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
