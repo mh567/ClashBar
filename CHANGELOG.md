@@ -1,3 +1,24 @@
+## v1.1.10
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.10-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 收拢内核设置的排版：TUN 开关与协议栈并成一行，日志级别置顶，说明文字压缩到一行。
+
+### 📝 更新日志 (Changelog)
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **TUN 合并为一行**：协议栈选项与开关同行展示，关闭时选项变淡但仍可切换。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **日志级别置顶**：最常用的字段放到内核设置最上方，并补上「常用」分组标题。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **精简说明文字**：顶部提示压成一行，TUN 排除网段改为单行展示，说明收进悬停提示。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **去掉多余分组**：移除语义含糊的「其他」分组。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **覆盖状态难以分辨**：TUN 行合并后两个「已覆盖」胶囊会显示字段名，不再需要逐个悬停才能区分。
+
+---
+
 ## v1.1.9
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.9-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
