@@ -49,10 +49,12 @@ extension AppViewModel {
 
     private func reportCoreStartFailure(message: String, trigger: StartTrigger, markFailedOnManual: Bool) {
         self.appendLog(level: "error", message: message)
-        self.presentCoreFailureAlert(
-            title: self.tr("app.core.alert.start_failed.title"),
-            message: message,
-            dedupeKey: "core-start-failed")
+        if trigger.shouldPresentFailureModal {
+            self.presentCoreFailureAlert(
+                title: self.tr("app.core.alert.start_failed.title"),
+                message: message,
+                dedupeKey: "core-start-failed")
+        }
         if trigger == .auto {
             self.startupErrorMessage = message
             self.statusText = "Stopped"

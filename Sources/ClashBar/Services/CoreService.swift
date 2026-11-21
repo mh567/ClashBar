@@ -859,30 +859,110 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
     }
 
     static func checkControllerPortAvailability(_ controller: String) throws {
-        guard let address = URLComponents(string: "http://" + controller), let port = address.port else { return }
-        let host = address.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        if self.controllerPortHasListener(controller) {
+            throw POSIXError(.EADDRINUSE)
+        }
+    }
+
+    static func controllerPortHasListener(_ controller: String) -> Bool {
+        guard let components = URLComponents(string: "http://" + controller),
+              let port = components.port,
+              (1...65_535).contains(port)
+        else { return false }
+        let host = components.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        let wildcard = host == nil || host?.isEmpty == true || host == "0.0.0.0" || host == "::"
         var hints = addrinfo()
-        hints.ai_flags = AI_PASSIVE
+        hints.ai_flags = wildcard ? AI_PASSIVE : 0
         hints.ai_socktype = SOCK_STREAM
         var interfaces: UnsafeMutablePointer<addrinfo>?
         guard getaddrinfo(host?.isEmpty == true ? nil : host, String(port), &hints, &interfaces) == 0,
               let first = interfaces
-        else { return }
+        else { return false }
         defer { freeaddrinfo(first) }
+
         var next: UnsafeMutablePointer<addrinfo>? = first
         while let pointer = next {
             let address = pointer.pointee
             next = address.ai_next
-            let fd = socket(address.ai_family, address.ai_socktype, address.ai_protocol)
-            if fd >= 0 {
-                var reuse: Int32 = 1
-                _ = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
-                let result = Darwin.bind(fd, address.ai_addr, address.ai_addrlen)
-                let reason = errno
-                Darwin.close(fd)
-                if result != 0, reason == EADDRINUSE { throw POSIXError(.EADDRINUSE) }
+            if wildcard {
+                if self.localInterfacesHaveListener(family: address.ai_family, port: port) { return true }
+            } else if self.localInterfacesHaveListener(
+                family: address.ai_family, port: port, matching: address.ai_addr)
+            {
+                return true
             }
         }
+        return false
+    }
+
+    private static func localInterfacesHaveListener(
+        family: Int32, port: Int, matching target: UnsafePointer<sockaddr>? = nil
+    ) -> Bool {
+        var interfaces: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&interfaces) == 0, let first = interfaces else { return false }
+        defer { freeifaddrs(first) }
+
+        var next: UnsafeMutablePointer<ifaddrs>? = first
+        while let interface = next {
+            next = interface.pointee.ifa_next
+            let flags = interface.pointee.ifa_flags
+            // Point-to-point TUNs can route this probe through mihomo itself.
+            guard flags & UInt32(IFF_UP) != 0,
+                  flags & UInt32(IFF_POINTOPOINT) == 0,
+                  let address = interface.pointee.ifa_addr,
+                  Int32(address.pointee.sa_family) == family
+            else { continue }
+            if let target, !self.addressesMatch(address, target) { continue }
+
+            if family == AF_INET {
+                var socketAddress = UnsafeRawPointer(address).assumingMemoryBound(to: sockaddr_in.self).pointee
+                socketAddress.sin_port = in_port_t(port).bigEndian
+                let listening = withUnsafePointer(to: &socketAddress) { pointer in
+                    pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                        self.tcpConnectSucceeds(to: $0, length: socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
+                }
+                if listening { return true }
+            } else if family == AF_INET6 {
+                var socketAddress = UnsafeRawPointer(address).assumingMemoryBound(to: sockaddr_in6.self).pointee
+                socketAddress.sin6_port = in_port_t(port).bigEndian
+                let listening = withUnsafePointer(to: &socketAddress) { pointer in
+                    pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                        self.tcpConnectSucceeds(to: $0, length: socklen_t(MemoryLayout<sockaddr_in6>.size))
+                    }
+                }
+                if listening { return true }
+            }
+        }
+        return false
+    }
+
+    private static func addressesMatch(_ local: UnsafePointer<sockaddr>, _ target: UnsafePointer<sockaddr>) -> Bool {
+        if local.pointee.sa_family == sa_family_t(AF_INET), target.pointee.sa_family == sa_family_t(AF_INET) {
+            let localAddress = UnsafeRawPointer(local).assumingMemoryBound(to: sockaddr_in.self).pointee
+            let targetAddress = UnsafeRawPointer(target).assumingMemoryBound(to: sockaddr_in.self).pointee
+            return localAddress.sin_addr.s_addr == targetAddress.sin_addr.s_addr
+        }
+        if local.pointee.sa_family == sa_family_t(AF_INET6), target.pointee.sa_family == sa_family_t(AF_INET6) {
+            let localAddress = UnsafeRawPointer(local).assumingMemoryBound(to: sockaddr_in6.self).pointee
+            let targetAddress = UnsafeRawPointer(target).assumingMemoryBound(to: sockaddr_in6.self).pointee
+            let addressesEqual = withUnsafePointer(to: localAddress.sin6_addr) { localPointer in
+                withUnsafePointer(to: targetAddress.sin6_addr) { targetPointer in
+                    memcmp(localPointer, targetPointer, MemoryLayout<in6_addr>.size) == 0
+                }
+            }
+            return addressesEqual && (targetAddress.sin6_scope_id == 0 ||
+                localAddress.sin6_scope_id == targetAddress.sin6_scope_id)
+        }
+        return false
+    }
+
+    private static func tcpConnectSucceeds(to address: UnsafePointer<sockaddr>?, length: socklen_t) -> Bool {
+        guard let address else { return false }
+        let fd = socket(Int32(address.pointee.sa_family), SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { Darwin.close(fd) }
+        return Darwin.connect(fd, address, length) == 0
     }
 
     private static func resolveWorkingDirectoryURL(configPath: String) -> URL {

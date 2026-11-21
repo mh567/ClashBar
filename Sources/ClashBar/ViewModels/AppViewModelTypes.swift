@@ -48,6 +48,13 @@ enum StartTrigger {
     case manual
     case auto
     case networkRecovery
+
+    var shouldPresentFailureModal: Bool {
+        switch self {
+        case .auto: false
+        case .manual, .networkRecovery: true
+        }
+    }
 }
 
 enum StopTrigger {

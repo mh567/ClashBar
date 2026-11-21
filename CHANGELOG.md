@@ -1,3 +1,18 @@
+## v1.1.8
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.8-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 修复更新后自动重启时的端口误判，并调整自动启动失败的提示方式。
+
+### 📝 更新日志 (Changelog)
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **更新后自动启动**：忽略旧 Mihomo 关闭后残留的连接状态，并继续检测真实的端口监听冲突。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **自动启动失败提示**：改为记录错误并更新状态，避免进入模态弹窗路径。
+
+---
+
 ## v1.1.7
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.7-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
