@@ -1,3 +1,31 @@
+## v1.1.9
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.9-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 设置页按「应用设置 / 内核设置」重新分区，一眼看出哪些字段跟随配置、哪些被手动覆盖。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **设置分区**：设置页顶部可在「应用设置」和「内核设置」间切换，前者只作用于 ClashBar 本身，不受订阅影响。
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **字段状态内联显示**：内核设置按网络、代理端口、TUN、其他分组，每项右侧标出「跟随」「已覆盖」或「未生效」，覆盖项点一下即恢复为配置文件声明的值。
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **TUN 排除网段**：TUN 分组底部只读显示 `tun.route-exclude-address`，并标注来自内核实际值还是配置文件。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **全部恢复**：改为一次性重载，不再逐字段重载若干次。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **系统代理绕过**：标题与说明明确这份列表只在系统代理开启时生效，与 TUN 排除网段是两套独立规则。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **配置加载性能**：同一份 YAML 只解析一次，设置页渲染不再重复解析。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **运行模式被固化**：切换运行模式不再写入字段覆盖，订阅更新后仍按配置文件声明的模式生效；历史上被固化的记录会在启动时清理。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **内核停止后的陈旧显示**：停止内核后清空加载配置派生的状态，设置页不再残留上次运行的值。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **恢复失败误回滚**：系统代理重配失败不再导致「全部恢复」整体回滚。
+
+---
+
 ## v1.1.8
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.8-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
