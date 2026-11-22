@@ -197,15 +197,43 @@ extension AppViewModel {
 
     /// Records overrides produced by a runtime action such as the top-bar mode
     /// switch. Those must not pin transient fields.
+    ///
+    /// Reverting a field to the value the config file declares clears its override. Only an
+    /// existing entry is cleared: an explicit first write that happens to equal the file is
+    /// still recorded, because pinning a field is a deliberate act (a later file change
+    /// must not move it).
     func recordConfigOverrides(
         _ values: [String: ConfigPatchValue], for id: UUID?, origin: ConfigOverrideOrigin)
     {
         guard let id, id == self.activeConfigOverrideID else { return }
         let persistable = ConfigOverrides.filteredForOrigin(values, origin: origin)
         guard !persistable.isEmpty else { return }
-        self.configOverrides.values[id, default: [:]].merge(persistable) { _, new in new }
-        self.runtimeConfigInput?.overrides = self.configOverrides.values[id] ?? [:]
+
+        // Compare against the selected file, not `configBaselineFields`: the baseline is
+        // only populated by a full config load, while a field can be hot-applied before
+        // one. With an empty baseline nothing would ever look reverted.
+        let declared = self.selectedConfigDeclaredFields()
+        var stored = self.configOverrides.values[id] ?? [:]
+        for (key, value) in persistable {
+            let hadOverride = stored[key] != nil
+            if hadOverride, declared[key] != nil, ConfigOverrides.matches(value, declared[key]) {
+                stored.removeValue(forKey: key)
+            } else {
+                stored[key] = value
+            }
+        }
+        self.configOverrides.values[id] = stored.isEmpty ? nil : stored
+        self.runtimeConfigInput?.overrides = stored
         self.persistConfigOverrides()
+    }
+
+    /// Fields as written in the selected config file, or `[:]` when it cannot be read.
+    func selectedConfigDeclaredFields() -> [String: ConfigPatchValue] {
+        guard let url = self.configService.selectedConfig,
+              let yaml = RuntimeConfigInput.readYAML(at: url.path),
+              let fields = try? ConfigReloadAction.fields(in: yaml)
+        else { return [:] }
+        return fields
     }
 
 }

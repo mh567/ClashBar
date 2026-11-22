@@ -1,3 +1,20 @@
+## v1.1.17
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.17-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 修复内核设置改回原值后仍显示已覆写，并收敛节点页的多余装饰。
+
+### 📝 更新日志 (Changelog)
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **改回原值仍显示已覆写**：把设置改回配置文件声明值时会清除该覆写，状态回到未覆写，覆写数量随之减少。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **多余的全部恢复按钮**：只有一项覆写时不再出现页面级的「全部恢复」，该项自身的状态标签即可恢复。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **二级菜单竖线**：展开代理组后的节点列表去掉左侧竖线，只保留缩进。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **代理组左侧空白**：无图标的代理组显示短标记，不再留出成片空白。
+
+---
+
 ## v1.1.16
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.16-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

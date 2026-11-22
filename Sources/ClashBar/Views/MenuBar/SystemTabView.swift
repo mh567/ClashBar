@@ -497,7 +497,9 @@ struct SystemTabView: TranslatingView {
 
             if showsRow {
                 HStack(spacing: T.space4) {
-                    if hasOverrides {
+                    // With a single override the row's own status chip already reverts it, so
+                    // a page-level Restore All would be a second way to do the same thing.
+                    if self.appViewModel.configOverrideCount > 1 {
                         Button {
                             self.appViewModel.stageCoreSettingsRestore(
                                 Set(self.appViewModel.activeConfigOverrides.keys))

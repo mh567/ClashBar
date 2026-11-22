@@ -344,9 +344,12 @@ extension ProxyTabView {
                     if let iconURL {
                         self.proxyGroupLeadingIcon(iconURL)
                     } else {
-                        // Groups without an icon still reserve the column, so every group
-                        // name starts on the same line as the quick rows above.
-                        Color.clear
+                        // Most groups carry no icon. Rather than leave the column empty, mark
+                        // the row with a short spine so the group name reads as the start of
+                        // its own block.
+                        Capsule()
+                            .fill(self.nativeTertiaryLabel.opacity(0.45))
+                            .frame(width: 2, height: T.rowLeadingIcon)
                             .frame(width: T.leadingIconColumn, height: T.leadingIconColumn)
                     }
 
@@ -663,13 +666,11 @@ private struct ProxyGroupPopoverNodeItem: View {
 
     var body: some View {
         HStack(spacing: T.space1) {
-            // Nodes sit under their group in the popover, so they are indented by the
-            // group's icon column and marked with a rule. Without it the node list reads
-            // as a sibling of the group rather than its contents.
-            Rectangle()
-                .fill(self.nativeSeparator.opacity(0.6))
-                .frame(width: T.stroke)
-                .frame(width: T.leadingIconColumn + T.leadingIconGap, alignment: .leading)
+            // Indent only. The popover is already a separate surface for this group, so a
+            // rule down its left edge reads as a decoration the second level never asked
+            // for.
+            Color.clear
+                .frame(width: T.leadingIconColumn + T.leadingIconGap, height: 0)
 
             Button(action: self.action) {
                 HStack(spacing: T.space1) {
