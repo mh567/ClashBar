@@ -1,3 +1,19 @@
+## v1.1.19
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.19-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 修复二级菜单展开时的宽度变化，并让代理提供者整行可悬停可点击。
+
+### 📝 更新日志 (Changelog)
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **二级菜单由宽变窄**：展开代理组时，弹层宽度不再随内容测量变化，打开即为最终宽度。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **代理提供者悬停与点击**：整行任意位置悬停都会高亮，点击任意位置都能展开节点列表，不再有行首行尾的死区。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **刷新按钮位置**：代理提供者的刷新按钮叠放在行尾，不再把整行切成两段。
+
+---
+
 ## v1.1.18
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.18-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

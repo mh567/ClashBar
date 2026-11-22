@@ -92,6 +92,31 @@ final class PanelPlacementTests: XCTestCase {
         XCTAssertEqual(third.frame, first.frame)
     }
 
+    /// A fixed preferred width must win over the content's own ideal width, so the panel is
+    /// the same width on every layout pass. An unpinned width is what let a popover measure
+    /// wide first and narrow second.
+    func testPreferredWidthIgnoresTheContentWidth() throws {
+        let context = self.context(hostX: 260)
+        let narrow = try XCTUnwrap(context.sideAttachedPlacement(
+            SideAttachedPlacementOptions(
+                contentSize: CGSize(width: 180, height: 160),
+                preferredWidth: 360,
+                maximumHeight: nil,
+                screenPadding: self.padding,
+                edgeOverlap: self.overlap,
+                pinnedSide: nil)))
+        let wide = try XCTUnwrap(context.sideAttachedPlacement(
+            SideAttachedPlacementOptions(
+                contentSize: CGSize(width: 420, height: 160),
+                preferredWidth: 360,
+                maximumHeight: nil,
+                screenPadding: self.padding,
+                edgeOverlap: self.overlap,
+                pinnedSide: narrow.attachmentSide)))
+
+        XCTAssertEqual(narrow.frame.width, wide.frame.width, "the panel width must not follow the content")
+    }
+
     /// The panel stays inside the padded area, so dropping the horizontal clamp did not let
     /// it hang off the screen.
     func testPanelStaysInsideThePaddedArea() throws {
