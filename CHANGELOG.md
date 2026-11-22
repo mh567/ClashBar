@@ -1,3 +1,27 @@
+## v1.1.15
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.15-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 内核设置按配置文件的分段重组，列表页高度统一，顶栏与底栏收窄融合。
+
+### 📝 更新日志 (Changelog)
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **内核设置重新分组**：按配置文件分段拆成 **通用**、**TUN**、**代理端口** 三组，TUN 独立成组并包含排除网段，日志级别归入通用组。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **生效方式显式区分**：立即生效与统一提交成为独立概念，端口与 TUN 这类牵动一组配置的改动统一提交，避免逐项生效反复重载内核。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **列表页高度统一**：分流、连接、日志共用同一高度预算，切换标签不再改变面板高度。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **顶栏模式切换压扁**：规则、全局、直连改为图标与文字横排，高度从 38pt 降到 30pt，减少误触。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **底栏融入面板**：底部版本栏去掉独立圆角背景，改为带顶部细线、铺满整宽的底盘。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **精简代理端口**：移除 macOS 上不生效的重定向端口与 TProxy 端口。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **切换标签整窗跳动**：去掉切页时的内容动画，并避免用旧高度先落位，标签切换不再引起窗口跳动。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **旧覆写残留**：升级时清理已移除端口的覆写记录，避免它们继续计入覆写数量与「全部恢复」。
+
+---
+
 ## v1.1.14
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.14-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
