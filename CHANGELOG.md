@@ -1,3 +1,21 @@
+## v1.1.20
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.20-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 二级菜单改为按内容自适应宽度，并去掉标题左侧的多余留白。
+
+### 📝 更新日志 (Changelog)
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **二级菜单自适应宽度**：代理组与代理提供者的二级菜单按内容决定宽度，短内容不会被拉宽，超长节点名会截断而不是撑满屏幕。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **二级菜单标题留白**：没有图标的代理组不再在标题左侧留出一道空槽。
+
+---
+
 ## v1.1.19
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.19-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

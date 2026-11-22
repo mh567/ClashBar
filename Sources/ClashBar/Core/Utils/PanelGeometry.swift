@@ -21,7 +21,12 @@ struct MenuBarDropdownPlacementOptions {
 
 struct SideAttachedPlacementOptions {
     let contentSize: CGSize
-    let preferredWidth: CGFloat?
+    /// Narrowest the panel may get, so short content still reads as a panel rather than a
+    /// sliver. Content narrower than this is centred inside it.
+    let minimumWidth: CGFloat?
+    /// Widest the panel may get, so a long node name cannot stretch it across the screen.
+    /// `nil` means the room on the chosen side is the only bound.
+    let maximumWidth: CGFloat?
     let maximumHeight: CGFloat?
     let screenPadding: CGFloat
     let edgeOverlap: CGFloat
@@ -96,8 +101,14 @@ struct PanelAnchorContext {
         let edgeOverlap = options.edgeOverlap
         let pinnedSide = options.pinnedSide
 
-        let contentWidth = options.preferredWidth ?? options.contentSize.width
-        let panelWidth = min(max(1, contentWidth), self.visibleFrame.width - (screenPadding * 2))
+        let contentWidth = options.contentSize.width
+        let widestAllowed = options.maximumWidth ?? self.visibleFrame.width - (screenPadding * 2)
+        // The panel follows its content, bounded on both sides: wide enough to read, narrow
+        // enough that one long row cannot stretch it across the screen.
+        let wantedWidth = max(
+            options.minimumWidth ?? 1,
+            min(contentWidth, widestAllowed))
+        let panelWidth = min(max(1, wantedWidth), self.visibleFrame.width - (screenPadding * 2))
 
         let preferredHeight: CGFloat = if let maximumHeight = options.maximumHeight {
             min(options.contentSize.height, maximumHeight + (screenPadding * 2))

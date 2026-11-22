@@ -61,7 +61,7 @@ extension ProxyTabView {
 
         let hasSubscription = detail?.subscriptionInfo != nil
 
-        return AttachedPopoverMenu(width: T.panelWidth) { _ in
+        return AttachedPopoverMenu { _ in
             VStack(alignment: .leading, spacing: T.space6) {
             HStack(alignment: .center, spacing: T.space6) {
                     self.providerLeadingIcon()
@@ -345,7 +345,7 @@ extension ProxyTabView {
         let rowHorizontalPadding = T.space4
         let rowVerticalPadding: CGFloat = T.space1
 
-        return AttachedPopoverMenu(width: T.panelWidth) { _ in
+        return AttachedPopoverMenu { _ in
             GeometryReader { geo in
                 let columns = self.proxyGroupMainColumnWidths(totalWidth: geo.size.width)
                 HStack(spacing: T.leadingIconGap) {
@@ -410,14 +410,16 @@ extension ProxyTabView {
             .padding(.horizontal, rowHorizontalPadding)
             .padding(.vertical, rowVerticalPadding)
         } content: { dismiss in
-            self.popoverHeader(name: group.name, count: nodeCount) {
-                // Reserve the icon column even without an icon, so the node list below is
-                // indented by the same amount for every group.
+            self.popoverHeader(
+                name: group.name,
+                count: nodeCount,
+                showsLeadingSlot: iconURL != nil)
+            {
+                // Only draw the icon when there is one. The main list reserves the column so
+                // its rows line up, but a popover has a single header, so a reserved slot
+                // here is an empty gutter to the left of the title.
                 if let iconURL {
                     self.proxyGroupLeadingIcon(iconURL)
-                } else {
-                    Color.clear
-                        .frame(width: T.leadingIconColumn, height: T.leadingIconColumn)
                 }
             } trailing: {
                 self.providerActionButton(
@@ -534,11 +536,14 @@ extension ProxyTabView {
     func popoverHeader(
         name: String,
         count: Int,
+        showsLeadingSlot: Bool = true,
         @ViewBuilder leading: () -> some View = { EmptyView() },
         @ViewBuilder trailing: () -> some View = { EmptyView() }) -> some View
     {
         VStack(spacing: 0) {
-            HStack(spacing: T.leadingIconGap) {
+            // An empty `leading()` still leaves an HStack gap, which reads as a stray gutter
+            // to the left of the title. Callers without an icon ask for no slot at all.
+            HStack(spacing: showsLeadingSlot ? T.leadingIconGap : 0) {
                 leading()
 
                 Text(name)

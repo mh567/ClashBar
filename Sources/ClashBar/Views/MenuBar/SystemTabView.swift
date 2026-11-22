@@ -90,8 +90,12 @@ struct SystemTabView: TranslatingView {
     {
         let resolvedControlWidth = controlWidth ?? self.settingsMenuControlWidth
 
+        // These menus have always been a narrow, fixed width; keeping minimum == maximum
+        // preserves that while the shared component derives its width from content.
+        let menuWidth = popoverWidth ?? resolvedControlWidth
         return AttachedPopoverMenu(
-            width: popoverWidth ?? resolvedControlWidth,
+            minimumWidth: menuWidth,
+            maximumWidth: menuWidth,
             maxHeight: popoverMaxHeight)
         { _ in
             HStack(spacing: T.space4) {

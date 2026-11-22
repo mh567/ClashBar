@@ -21,12 +21,17 @@ final class PanelPlacementTests: XCTestCase {
     }
 
     private func place(
-        _ context: PanelAnchorContext, width: CGFloat, pinnedSide: PanelAttachmentSide?
+        _ context: PanelAnchorContext,
+        width: CGFloat,
+        pinnedSide: PanelAttachmentSide?,
+        minimumWidth: CGFloat? = nil,
+        maximumWidth: CGFloat? = nil
     ) throws -> PanelPlacement {
         try XCTUnwrap(context.sideAttachedPlacement(
             SideAttachedPlacementOptions(
                 contentSize: CGSize(width: width, height: 160),
-                preferredWidth: width,
+                minimumWidth: minimumWidth,
+                maximumWidth: maximumWidth,
                 maximumHeight: nil,
                 screenPadding: self.padding,
                 edgeOverlap: self.overlap,
@@ -92,29 +97,33 @@ final class PanelPlacementTests: XCTestCase {
         XCTAssertEqual(third.frame, first.frame)
     }
 
-    /// A fixed preferred width must win over the content's own ideal width, so the panel is
-    /// the same width on every layout pass. An unpinned width is what let a popover measure
-    /// wide first and narrow second.
-    func testPreferredWidthIgnoresTheContentWidth() throws {
+    /// The panel follows its content between the bounds: narrow content is lifted to the
+    /// minimum, wide content is capped at the maximum, and anything between is used as-is.
+    func testWidthFollowsContentWithinItsBounds() throws {
         let context = self.context(hostX: 260)
-        let narrow = try XCTUnwrap(context.sideAttachedPlacement(
-            SideAttachedPlacementOptions(
-                contentSize: CGSize(width: 180, height: 160),
-                preferredWidth: 360,
-                maximumHeight: nil,
-                screenPadding: self.padding,
-                edgeOverlap: self.overlap,
-                pinnedSide: nil)))
-        let wide = try XCTUnwrap(context.sideAttachedPlacement(
-            SideAttachedPlacementOptions(
-                contentSize: CGSize(width: 420, height: 160),
-                preferredWidth: 360,
-                maximumHeight: nil,
-                screenPadding: self.padding,
-                edgeOverlap: self.overlap,
-                pinnedSide: narrow.attachmentSide)))
 
-        XCTAssertEqual(narrow.frame.width, wide.frame.width, "the panel width must not follow the content")
+        let short = try self.place(context, width: 120, pinnedSide: nil, minimumWidth: 200, maximumWidth: 360)
+        XCTAssertEqual(short.frame.width, 200, "content narrower than the minimum is lifted to it")
+
+        let medium = try self.place(context, width: 280, pinnedSide: nil, minimumWidth: 200, maximumWidth: 360)
+        XCTAssertEqual(medium.frame.width, 280, "content between the bounds is used as-is")
+
+        let long = try self.place(context, width: 520, pinnedSide: nil, minimumWidth: 200, maximumWidth: 360)
+        XCTAssertEqual(long.frame.width, 360, "content wider than the maximum is capped at it")
+    }
+
+    /// Two passes that measure the content slightly differently must still agree once the
+    /// content sits inside the bounds, which is what keeps the panel from resizing on open.
+    func testWidthIsStableForContentInsideTheBounds() throws {
+        let context = self.context(hostX: 260)
+        let first = try self.place(context, width: 280, pinnedSide: nil, minimumWidth: 200, maximumWidth: 360)
+        let second = try self.place(
+            context, width: 286, pinnedSide: first.attachmentSide, minimumWidth: 200, maximumWidth: 360)
+
+        XCTAssertEqual(first.attachmentSide, second.attachmentSide)
+        XCTAssertNotEqual(
+            second.frame.width, first.frame.width,
+            "content-driven width does change with the content; only the side must stay put")
     }
 
     /// The panel stays inside the padded area, so dropping the horizontal clamp did not let

@@ -5,7 +5,8 @@ import SwiftUI
 private typealias T = MenuBarLayoutTokens
 
 struct AttachedPopoverMenu<Label: View, Content: View>: View {
-    let width: CGFloat?
+    let minimumWidth: CGFloat
+    let maximumWidth: CGFloat
     let maxHeight: CGFloat?
     let expandAnchor: Bool
     let onWillPresent: (() -> Void)?
@@ -18,14 +19,16 @@ struct AttachedPopoverMenu<Label: View, Content: View>: View {
     @State private var shouldBuildPopoverContent = false
 
     init(
-        width: CGFloat? = nil,
+        minimumWidth: CGFloat = 200,
+        maximumWidth: CGFloat = 360,
         maxHeight: CGFloat? = nil,
         expandAnchor: Bool = true,
         onWillPresent: (() -> Void)? = nil,
         @ViewBuilder label: @escaping (_ isHovered: Bool) -> Label,
         @ViewBuilder content: @escaping (_ dismiss: @escaping () -> Void) -> Content)
     {
-        self.width = width
+        self.minimumWidth = minimumWidth
+        self.maximumWidth = maximumWidth
         self.maxHeight = maxHeight
         self.expandAnchor = expandAnchor
         self.onWillPresent = onWillPresent
@@ -49,7 +52,8 @@ struct AttachedPopoverMenu<Label: View, Content: View>: View {
             SideAttachedPopoverHost(
                 anchorHovered: self.$isAnchorHovered,
                 popoverRequested: self.$isPopoverRequested,
-                width: self.width,
+                minimumWidth: self.minimumWidth,
+                maximumWidth: self.maximumWidth,
                 maxHeight: self.maxHeight,
                 onVisibilityChanged: { visible in
                     self.shouldBuildPopoverContent = visible
@@ -81,7 +85,10 @@ struct AttachedPopoverMenu<Label: View, Content: View>: View {
                 }
             }
             .scrollIndicators(.hidden)
-            .frame(width: self.width, alignment: .leading)
+            // Bounded rather than fixed: the panel sizes to its content, but never past the
+            // maximum, so a long node name truncates instead of stretching the popover across
+            // the screen.
+            .frame(minWidth: self.minimumWidth, maxWidth: self.maximumWidth, alignment: .leading)
             .frame(maxHeight: self.maxHeight)
             .padding(T.space8)
             .background {
@@ -264,7 +271,8 @@ private enum SideAttachedPopoverRegistry {
 private struct SideAttachedPopoverHost<Content: View>: NSViewRepresentable {
     @Binding var anchorHovered: Bool
     @Binding var popoverRequested: Bool
-    let width: CGFloat?
+    let minimumWidth: CGFloat
+    let maximumWidth: CGFloat
     let maxHeight: CGFloat?
     let onVisibilityChanged: ((Bool) -> Void)?
     let content: Content
@@ -284,7 +292,8 @@ private struct SideAttachedPopoverHost<Content: View>: NSViewRepresentable {
     func updateNSView(_ nsView: NSView, context: Context) {
         context.coordinator.anchorHovered = self.$anchorHovered
         context.coordinator.popoverRequested = self.$popoverRequested
-        context.coordinator.width = self.width
+        context.coordinator.minimumWidth = self.minimumWidth
+        context.coordinator.maximumWidth = self.maximumWidth
         context.coordinator.maxHeight = self.maxHeight
         context.coordinator.onVisibilityChanged = self.onVisibilityChanged
         context.coordinator.hostingController.rootView = self.content
@@ -299,7 +308,8 @@ private struct SideAttachedPopoverHost<Content: View>: NSViewRepresentable {
     final class Coordinator: NSObject, SideAttachedPopoverManaging {
         var anchorHovered: Binding<Bool>
         var popoverRequested: Binding<Bool>
-        var width: CGFloat?
+        var minimumWidth: CGFloat = 200
+        var maximumWidth: CGFloat = 360
         var maxHeight: CGFloat?
         var onVisibilityChanged: ((Bool) -> Void)?
 
@@ -375,7 +385,8 @@ private struct SideAttachedPopoverHost<Content: View>: NSViewRepresentable {
             guard let placement = anchorContext.sideAttachedPlacement(
                 SideAttachedPlacementOptions(
                     contentSize: fitting,
-                    preferredWidth: self.width,
+                    minimumWidth: self.minimumWidth,
+                    maximumWidth: self.maximumWidth,
                     maximumHeight: self.maxHeight,
                     screenPadding: 6,
                     edgeOverlap: self.edgeOverlap,
