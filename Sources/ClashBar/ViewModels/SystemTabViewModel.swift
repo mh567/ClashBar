@@ -12,6 +12,22 @@ struct SystemFeedbackState: Equatable {
     let symbol: String
 }
 
+/// The core-settings action row is a filled card, so it must only exist when it would
+/// contain something. A lone override is not enough: its own status chip reverts it, and
+/// Restore All needs at least two, so the card would render as an empty strip.
+enum CoreSettingsActionsVisibility {
+    static func shouldShow(
+        isApplying: Bool,
+        isCommitting: Bool,
+        pendingCount: Int,
+        overrideCount: Int,
+        hasError: Bool,
+        isRestoring: Bool) -> Bool
+    {
+        isApplying || isCommitting || pendingCount > 0 || hasError || isRestoring || overrideCount > 1
+    }
+}
+
 @MainActor
 enum SystemTabViewModel {
     static func maintenanceActionEnabled(session: AppViewModel) -> Bool {

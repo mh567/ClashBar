@@ -61,104 +61,105 @@ extension ProxyTabView {
 
         let hasSubscription = detail?.subscriptionInfo != nil
 
-        return AttachedPopoverMenu { isHovered in
-            VStack(alignment: .leading, spacing: T.space6) {
-                HStack(alignment: .center, spacing: T.space6) {
-                    self.providerLeadingIcon()
+        return HStack(alignment: .center, spacing: T.space6) {
+            // The anchor covers the label block; the refresh button sits outside it. A
+            // Button nested inside another Button's label never receives the click, which
+            // is why this row did not behave like the config and system-proxy rows.
+            AttachedPopoverMenu { _ in
+                VStack(alignment: .leading, spacing: T.space6) {
+                    HStack(alignment: .center, spacing: T.space6) {
+                        self.providerLeadingIcon()
 
-                    HStack(alignment: .center, spacing: T.space4) {
                         HStack(alignment: .center, spacing: T.space4) {
-                            Text(name)
-                                .font(.app(size: T.FontSize.body, weight: .semibold))
-                                .foregroundStyle(nativePrimaryLabel)
-                                .lineLimit(1)
-                                .layoutPriority(1)
-
-                            Text("\(nodeCount)")
-                                .font(.app(size: T.FontSize.caption, weight: .semibold))
-                                .foregroundStyle(nativeSecondaryLabel)
-                                .fixedSize()
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Text(updatedText)
-                            .font(.app(size: T.FontSize.caption, weight: .regular))
-                            .foregroundStyle(nativeTertiaryLabel)
-                            .lineLimit(1)
-                            .frame(width: updateTimeWidth, alignment: .trailing)
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    // The popover anchor already highlights the whole row on hover, so the
-                    // refresh stays a real button here: nesting it works and keeps the
-                    // one-click path the group rows have.
-                    Button {
-                        Task { await self.appViewModel.updateProxyProvider(name: name) }
-                    } label: {
-                        ZStack {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.app(size: T.FontSize.caption, weight: .semibold))
-                                .symbolRenderingMode(.hierarchical)
-                                .foregroundStyle(nativeSecondaryLabel)
-                                .opacity(isUpdating ? 0 : 1)
-                            ProgressView()
-                                .scaleEffect(0.5)
-                                .opacity(isUpdating ? 1 : 0)
-                        }
-                        .frame(width: T.actionColumn, height: T.rowLeadingIcon)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(MenuBarInteractionStyle())
-                    .disabled(isUpdating)
-                    .help(self.tr("ui.action.refresh"))
-                    .accessibilityLabel(self.tr("ui.action.refresh"))
-                }
-
-                if hasSubscription {
-                    VStack(alignment: .leading, spacing: T.space2) {
-                        HStack(spacing: 0) {
-                            Text(expireText)
-                                .font(.app(size: T.FontSize.caption, weight: .regular))
-                                .foregroundStyle(expireColor)
-                            Spacer(minLength: T.space4)
-                            if let upload, let download, let total {
-                                let used = upload + download
-                                let quotaText =
-                                    "\(ValueFormatter.bytesCompactNoSpace(used)) / " +
-                                    "\(ValueFormatter.bytesCompactNoSpace(total))"
-                                Text(quotaText)
-                                    .font(.app(size: T.FontSize.caption, weight: .regular))
-                                    .foregroundStyle(nativeSecondaryLabel)
+                            HStack(alignment: .center, spacing: T.space4) {
+                                Text(name)
+                                    .font(.app(size: T.FontSize.body, weight: .semibold))
+                                    .foregroundStyle(nativePrimaryLabel)
                                     .lineLimit(1)
-                            }
-                        }
+                                    .layoutPriority(1)
 
-                        if let usedRatio {
-                            GeometryReader { geo in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(nativeControlFill.opacity(T.Opacity.solid))
-                                    Capsule()
-                                        .fill((usedRatio >= 0.9 ? nativeCritical
-                                            : usedRatio >= 0.75 ? nativeWarning
-                                            : nativeAccent).opacity(T.Opacity.solid))
-                                        .frame(width: geo.size.width * usedRatio)
+                                Text("\(nodeCount)")
+                                    .font(.app(size: T.FontSize.caption, weight: .semibold))
+                                    .foregroundStyle(nativeSecondaryLabel)
+                                    .fixedSize()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                            Text(updatedText)
+                                .font(.app(size: T.FontSize.caption, weight: .regular))
+                                .foregroundStyle(nativeTertiaryLabel)
+                                .lineLimit(1)
+                                .frame(width: updateTimeWidth, alignment: .trailing)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+
+                    if hasSubscription {
+                        VStack(alignment: .leading, spacing: T.space2) {
+                            HStack(spacing: 0) {
+                                Text(expireText)
+                                    .font(.app(size: T.FontSize.caption, weight: .regular))
+                                    .foregroundStyle(expireColor)
+                                Spacer(minLength: T.space4)
+                                if let upload, let download, let total {
+                                    let used = upload + download
+                                    let quotaText =
+                                        "\(ValueFormatter.bytesCompactNoSpace(used)) / " +
+                                        "\(ValueFormatter.bytesCompactNoSpace(total))"
+                                    Text(quotaText)
+                                        .font(.app(size: T.FontSize.caption, weight: .regular))
+                                        .foregroundStyle(nativeSecondaryLabel)
+                                        .lineLimit(1)
                                 }
                             }
-                            .frame(height: T.space6)
+
+                            if let usedRatio {
+                                GeometryReader { geo in
+                                    ZStack(alignment: .leading) {
+                                        Capsule().fill(nativeControlFill.opacity(T.Opacity.solid))
+                                        Capsule()
+                                            .fill((usedRatio >= 0.9 ? nativeCritical
+                                                : usedRatio >= 0.75 ? nativeWarning
+                                                : nativeAccent).opacity(T.Opacity.solid))
+                                            .frame(width: geo.size.width * usedRatio)
+                                    }
+                                }
+                                .frame(height: T.space6)
+                            }
                         }
+                        // Sub-lines start where the row's text starts, one icon column in.
+                        .padding(.leading, T.leadingIconColumn + T.leadingIconGap)
+                        .padding(.trailing, T.leadingIconColumn + T.leadingIconGap)
                     }
-                    // Sub-lines start where the row's text starts, one icon column in.
-                    .padding(.leading, T.leadingIconColumn + T.leadingIconGap)
-                    .padding(.trailing, T.leadingIconColumn + T.leadingIconGap)
                 }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, rowHorizontalPadding)
-            .padding(.vertical, T.space6)
-            .background(self.nativeActionRowBackground(isHovered))
+                .frame(maxWidth: .infinity, alignment: .leading)
         } content: { dismiss in
             self.providerPopoverContent(name: name, detail: detail, dismiss: dismiss)
         }
+
+            Button {
+                Task { await self.appViewModel.updateProxyProvider(name: name) }
+            } label: {
+                ZStack {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.app(size: T.FontSize.caption, weight: .semibold))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(nativeSecondaryLabel)
+                        .opacity(isUpdating ? 0 : 1)
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .opacity(isUpdating ? 1 : 0)
+                }
+                .frame(width: T.actionColumn, height: T.rowLeadingIcon)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(MenuBarInteractionStyle())
+            .disabled(isUpdating)
+            .help(self.tr("ui.action.refresh"))
+            .accessibilityLabel(self.tr("ui.action.refresh"))
+        }
+        .padding(.horizontal, rowHorizontalPadding)
+        .padding(.vertical, T.space6)
     }
 
     /// Same shape as a proxy group's popover: a header plus the provider's nodes, so a
@@ -337,7 +338,7 @@ extension ProxyTabView {
         let rowHorizontalPadding = T.space4
         let rowVerticalPadding: CGFloat = T.space1
 
-        return AttachedPopoverMenu { isHovered in
+        return AttachedPopoverMenu { _ in
             GeometryReader { geo in
                 let columns = self.proxyGroupMainColumnWidths(totalWidth: geo.size.width)
                 HStack(spacing: T.leadingIconGap) {
@@ -401,7 +402,6 @@ extension ProxyTabView {
             .frame(height: T.compactRowHeight)
             .padding(.horizontal, rowHorizontalPadding)
             .padding(.vertical, rowVerticalPadding)
-            .background(self.nativeActionRowBackground(isHovered))
         } content: { dismiss in
             self.popoverHeader(name: group.name, count: nodeCount) {
                 // Reserve the icon column even without an icon, so the node list below is
@@ -666,12 +666,6 @@ private struct ProxyGroupPopoverNodeItem: View {
 
     var body: some View {
         HStack(spacing: T.space1) {
-            // Indent only. The popover is already a separate surface for this group, so a
-            // rule down its left edge reads as a decoration the second level never asked
-            // for.
-            Color.clear
-                .frame(width: T.leadingIconColumn + T.leadingIconGap, height: 0)
-
             Button(action: self.action) {
                 HStack(spacing: T.space1) {
                     if self.showsSelectionMark {

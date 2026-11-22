@@ -474,9 +474,13 @@ struct SystemTabView: TranslatingView {
         let applying = self.appViewModel.isApplyingCoreSettings
         let committing = self.appViewModel.isCommittingCoreSettingImmediately
         let restoring = !self.appViewModel.coreSettingsRestores.isEmpty
-        let hasOverrides = self.appViewModel.configOverrideCount > 0
-        let showsRow = applying || committing || count > 0 || hasOverrides
-            || self.appViewModel.coreSettingsError != nil || restoring
+        let showsRow = CoreSettingsActionsVisibility.shouldShow(
+            isApplying: applying,
+            isCommitting: committing,
+            pendingCount: count,
+            overrideCount: self.appViewModel.configOverrideCount,
+            hasError: self.appViewModel.coreSettingsError != nil,
+            isRestoring: restoring)
 
         return VStack(alignment: .leading, spacing: T.space6) {
             if applying || committing {
