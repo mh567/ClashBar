@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 @testable import ClashBar
 
@@ -360,6 +361,20 @@ final class ConfigOverridesTests: XCTestCase {
 
         XCTAssertEqual(model.coreSettingsFailure([.tun: "tun reason"], appliedGroups: 0), .reason("tun reason"))
         XCTAssertEqual(model.coreSettingsFailure([.ports: "port reason"], appliedGroups: 2), .reason("port reason"))
+    }
+
+    /// Two settings with different meanings must not share a glyph; `allowLan` and the
+    /// HTTP port used to both render `network`. Distinctness alone would still pass with
+    /// an invalid symbol name, so each one is also resolved against the system set.
+    func testEveryFieldHasADistinctAndValidSymbol() {
+        let symbols = ConfigOverrideField.allCases.map(\.symbol)
+        XCTAssertEqual(symbols.count, Set(symbols).count, "each field needs a distinct symbol")
+
+        for symbol in symbols {
+            XCTAssertNotNil(
+                NSImage(systemSymbolName: symbol, accessibilityDescription: nil),
+                "\(symbol) is not a valid SF Symbol")
+        }
     }
 
     func testOverrideFieldKeysExistInBothLocalizations() throws {

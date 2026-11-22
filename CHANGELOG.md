@@ -1,3 +1,26 @@
+## v1.1.16
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.16-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 节点页统一左侧栅格、代理提供者可展开，内核设置每项改用各自的图标。
+
+### 📝 更新日志 (Changelog)
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **节点页左侧对齐**：快速操作、代理提供者、代理组、节点四类行的图标列与间距统一，文字落在同一条竖线上。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **代理提供者可展开**：提供者整行可点，展开后显示该提供者的节点列表，操作方式与代理组一致。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **节点从属关系**：节点项按组图标列缩进并带竖线标记，看得出属于上方哪个组。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **配置项图标按语义区分**：允许局域网、IPv6、TCP 并发与 TUN 各自换用更贴切的图标，不再与端口或维护项重复。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **提供者刷新**：刷新按钮恢复可点击，并补回悬停提示与无障碍标签。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **提供者节点误显示为单选**：提供者节点不再画选中圈，避免看起来像未选中的选项。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **节点列表空态**：提供者详情稍后到达时节点列表会正常出现，不再一直停在占位文案。
+
+---
+
 ## v1.1.15
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.15-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

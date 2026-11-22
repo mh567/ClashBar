@@ -579,7 +579,9 @@ struct SystemTabView: TranslatingView {
 
         return HStack(spacing: T.space6) {
             HStack(spacing: T.space4) {
-                self.settingsRowLabel(symbol: "shield.lefthalf.filled", title: self.tr("ui.quick.tun_mode"))
+                self.settingsRowLabel(
+                    symbol: ConfigOverrideField.tunEnable.symbol,
+                    title: self.tr("ui.quick.tun_mode"))
                     .minimumScaleFactor(T.minimumScale)
                 ForEach(pending) { state in
                     self.coreFieldStatus(state)

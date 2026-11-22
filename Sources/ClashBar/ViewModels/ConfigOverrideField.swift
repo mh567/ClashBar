@@ -175,14 +175,16 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
         }
     }
 
+    /// One glyph per concept. `allowLan` used to share `network` with the HTTP port,
+    /// which made two unrelated settings look like the same thing.
     var symbol: String {
         switch self {
         case .allowLan:
-            "network"
+            "wifi.router"
         case .ipv6:
-            "globe"
+            "6.circle"
         case .tcpConcurrent:
-            "point.3.connected.trianglepath.dotted"
+            "arrow.triangle.branch"
         case .logLevel:
             "text.alignleft"
         case .mode:
@@ -194,7 +196,7 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
         case .mixedPort:
             "arrow.triangle.merge"
         case .tunEnable:
-            "network.badge.shield.half.filled"
+            "lock.shield"
         case .tunStack:
             "square.3.layers.3d"
         }

@@ -19,6 +19,19 @@ enum MenuBarLayoutTokens {
 
     static let rowLeadingIcon: CGFloat = 16
 
+    /// Width of the leading icon column every row on the proxy page shares, so the text
+    /// of the quick rows, provider rows, group rows and node rows all starts on one
+    /// vertical line. `rowLeadingIcon` is the glyph box inside this column.
+    static let leadingIconColumn: CGFloat = 18
+
+    /// Gap between that icon column and the row's text. Shared by every row kind, since
+    /// a different gap per row is what put their text on different vertical lines.
+    static let leadingIconGap: CGFloat = 6
+
+    /// Trailing column for a single row action icon (refresh, healthcheck). Kept apart
+    /// from `leadingIconColumn` so the two can be tuned independently.
+    static let actionColumn: CGFloat = 18
+
     static let minimumScale: CGFloat = 0.85
 
     enum Opacity {

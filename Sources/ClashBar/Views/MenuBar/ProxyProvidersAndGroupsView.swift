@@ -57,104 +57,151 @@ extension ProxyTabView {
         }()
         let rowHorizontalPadding = T.space4
         let isUpdating = proxyStore.providerUpdating.contains(name)
-        let hovered = hoveredProviderName == name
         let updateTimeWidth: CGFloat = 44
 
         let hasSubscription = detail?.subscriptionInfo != nil
 
-        return VStack(alignment: .leading, spacing: T.space6) {
-            HStack(alignment: .center, spacing: T.space6) {
-                Image(systemName: "externaldrive.fill")
-                    .font(.app(size: T.FontSize.caption, weight: .semibold))
-                    .foregroundStyle(nativeTeal.opacity(T.Opacity.solid))
-                    .frame(width: T.rowLeadingIcon, height: T.rowLeadingIcon)
+        return AttachedPopoverMenu { isHovered in
+            VStack(alignment: .leading, spacing: T.space6) {
+                HStack(alignment: .center, spacing: T.space6) {
+                    self.providerLeadingIcon()
 
-                HStack(alignment: .center, spacing: T.space4) {
                     HStack(alignment: .center, spacing: T.space4) {
-                        Text(name)
-                            .font(.app(size: T.FontSize.body, weight: .semibold))
-                            .foregroundStyle(nativePrimaryLabel)
-                            .lineLimit(1)
-                            .layoutPriority(1)
-
-                        Text("\(nodeCount)")
-                            .font(.app(size: T.FontSize.caption, weight: .semibold))
-                            .foregroundStyle(nativeSecondaryLabel)
-                            .fixedSize()
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Text(updatedText)
-                        .font(.app(size: T.FontSize.caption, weight: .regular))
-                        .foregroundStyle(nativeTertiaryLabel)
-                        .lineLimit(1)
-                        .frame(width: updateTimeWidth, alignment: .trailing)
-                }
-                .frame(maxWidth: .infinity)
-
-                Button {
-                    Task { await appViewModel.updateProxyProvider(name: name) }
-                } label: {
-                    ZStack {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.app(size: T.FontSize.caption, weight: .semibold))
-                            .symbolRenderingMode(.hierarchical)
-                            .foregroundStyle(nativeSecondaryLabel)
-                            .opacity(isUpdating ? 0 : 1)
-                        ProgressView()
-                            .scaleEffect(0.5)
-                            .opacity(isUpdating ? 1 : 0)
-                    }
-                    .frame(width: T.rowLeadingIcon, height: T.rowLeadingIcon)
-                }
-                .buttonStyle(MenuBarInteractionStyle())
-                .disabled(isUpdating)
-                .accessibilityLabel(tr("ui.action.refresh"))
-            }
-
-            if hasSubscription {
-                VStack(alignment: .leading, spacing: T.space2) {
-                    HStack(spacing: 0) {
-                        Text(expireText)
-                            .font(.app(size: T.FontSize.caption, weight: .regular))
-                            .foregroundStyle(expireColor)
-                        Spacer(minLength: T.space4)
-                        if let upload, let download, let total {
-                            let used = upload + download
-                            let quotaText =
-                                "\(ValueFormatter.bytesCompactNoSpace(used)) / " +
-                                "\(ValueFormatter.bytesCompactNoSpace(total))"
-                            Text(quotaText)
-                                .font(.app(size: T.FontSize.caption, weight: .regular))
-                                .foregroundStyle(nativeSecondaryLabel)
+                        HStack(alignment: .center, spacing: T.space4) {
+                            Text(name)
+                                .font(.app(size: T.FontSize.body, weight: .semibold))
+                                .foregroundStyle(nativePrimaryLabel)
                                 .lineLimit(1)
-                        }
-                    }
+                                .layoutPriority(1)
 
-                    if let usedRatio {
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(nativeControlFill.opacity(T.Opacity.solid))
-                                Capsule()
-                                    .fill((usedRatio >= 0.9 ? nativeCritical : usedRatio >= 0.75 ? nativeWarning :
-                                            nativeAccent).opacity(T.Opacity.solid))
-                                    .frame(width: geo.size.width * usedRatio)
+                            Text("\(nodeCount)")
+                                .font(.app(size: T.FontSize.caption, weight: .semibold))
+                                .foregroundStyle(nativeSecondaryLabel)
+                                .fixedSize()
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Text(updatedText)
+                            .font(.app(size: T.FontSize.caption, weight: .regular))
+                            .foregroundStyle(nativeTertiaryLabel)
+                            .lineLimit(1)
+                            .frame(width: updateTimeWidth, alignment: .trailing)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    // The popover anchor already highlights the whole row on hover, so the
+                    // refresh stays a real button here: nesting it works and keeps the
+                    // one-click path the group rows have.
+                    Button {
+                        Task { await self.appViewModel.updateProxyProvider(name: name) }
+                    } label: {
+                        ZStack {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .font(.app(size: T.FontSize.caption, weight: .semibold))
+                                .symbolRenderingMode(.hierarchical)
+                                .foregroundStyle(nativeSecondaryLabel)
+                                .opacity(isUpdating ? 0 : 1)
+                            ProgressView()
+                                .scaleEffect(0.5)
+                                .opacity(isUpdating ? 1 : 0)
+                        }
+                        .frame(width: T.actionColumn, height: T.rowLeadingIcon)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(MenuBarInteractionStyle())
+                    .disabled(isUpdating)
+                    .help(self.tr("ui.action.refresh"))
+                    .accessibilityLabel(self.tr("ui.action.refresh"))
+                }
+
+                if hasSubscription {
+                    VStack(alignment: .leading, spacing: T.space2) {
+                        HStack(spacing: 0) {
+                            Text(expireText)
+                                .font(.app(size: T.FontSize.caption, weight: .regular))
+                                .foregroundStyle(expireColor)
+                            Spacer(minLength: T.space4)
+                            if let upload, let download, let total {
+                                let used = upload + download
+                                let quotaText =
+                                    "\(ValueFormatter.bytesCompactNoSpace(used)) / " +
+                                    "\(ValueFormatter.bytesCompactNoSpace(total))"
+                                Text(quotaText)
+                                    .font(.app(size: T.FontSize.caption, weight: .regular))
+                                    .foregroundStyle(nativeSecondaryLabel)
+                                    .lineLimit(1)
                             }
                         }
-                        .frame(height: T.space6)
+
+                        if let usedRatio {
+                            GeometryReader { geo in
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(nativeControlFill.opacity(T.Opacity.solid))
+                                    Capsule()
+                                        .fill((usedRatio >= 0.9 ? nativeCritical
+                                            : usedRatio >= 0.75 ? nativeWarning
+                                            : nativeAccent).opacity(T.Opacity.solid))
+                                        .frame(width: geo.size.width * usedRatio)
+                                }
+                            }
+                            .frame(height: T.space6)
+                        }
                     }
+                    // Sub-lines start where the row's text starts, one icon column in.
+                    .padding(.leading, T.leadingIconColumn + T.leadingIconGap)
+                    .padding(.trailing, T.leadingIconColumn + T.leadingIconGap)
                 }
-                .padding(.leading, T.rowLeadingIcon + T.space6)
-                .padding(.trailing, T.rowLeadingIcon + T.space6)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, rowHorizontalPadding)
+            .padding(.vertical, T.space6)
+            .background(self.nativeActionRowBackground(isHovered))
+        } content: { dismiss in
+            self.providerPopoverContent(name: name, detail: detail, dismiss: dismiss)
         }
-        .padding(.horizontal, rowHorizontalPadding)
-        .padding(.vertical, T.space6)
-        .background(self.nativeActionRowBackground(hovered))
-        .onHover { hoveredProviderName = self.nextHovered(
-            current: hoveredProviderName,
-            target: name,
-            isHovering: $0) }
+    }
+
+    /// Same shape as a proxy group's popover: a header plus the provider's nodes, so a
+    /// provider behaves like the group row above it instead of being the only row on the
+    /// page that cannot be opened.
+    @ViewBuilder
+    func providerPopoverContent(name: String, detail: ProviderDetail?, dismiss: @escaping () -> Void) -> some View
+    {
+        let nodes = detail?.proxies ?? []
+        self.popoverHeader(name: name, count: nodes.count) {
+            self.providerLeadingIcon()
+        } trailing: {
+            self.providerActionButton(
+                .refresh,
+                isLoading: self.proxyStore.providerUpdating.contains(name))
+            {
+                await self.appViewModel.updateProxyProvider(name: name)
+            }
+            .help(self.tr("ui.action.refresh"))
+        }
+
+        FrozenPopoverNodesList(
+            nodes: nodes.map(\.name), emptyText: self.tr("ui.common.na"))
+        { nodeName in
+            let samples = self.appViewModel.delaySamples(group: name, node: nodeName)
+            ProxyGroupPopoverNodeItem(
+                title: nodeName,
+                typeText: self.appViewModel.proxyNodeTypes[nodeName].trimmedNonEmpty,
+                delayText: self.appViewModel.delayText(group: name, node: nodeName),
+                delaySamples: samples,
+                delayColor: self.latencyColor(samples.last),
+                isTesting: self.appViewModel.isProxyLatencyTesting(group: name, node: nodeName),
+                selected: false,
+                showsSelectionMark: false,
+                testLatencyLabel: self.tr("ui.action.test_latency"),
+                onTestLatency: {
+                    await self.appViewModel.refreshProxyLatency(group: name, node: nodeName)
+                },
+                action: {
+                    dismiss()
+                    Task { await self.appViewModel.refreshProxyLatency(group: name, node: nodeName) }
+                })
+        }
     }
 
     enum ProviderAction {
@@ -287,18 +334,20 @@ extension ProxyTabView {
             fallbackToGroupHistory: true)
         let nodeCount = group.all.count
         let iconURL = self.proxyGroupIconURL(group)
-        let hasLeadingIcon = iconURL != nil
         let rowHorizontalPadding = T.space4
         let rowVerticalPadding: CGFloat = T.space1
 
         return AttachedPopoverMenu { isHovered in
             GeometryReader { geo in
-                let columns = self.proxyGroupMainColumnWidths(
-                    totalWidth: geo.size.width,
-                    hasLeadingIcon: hasLeadingIcon)
-                HStack(spacing: T.space1) {
+                let columns = self.proxyGroupMainColumnWidths(totalWidth: geo.size.width)
+                HStack(spacing: T.leadingIconGap) {
                     if let iconURL {
                         self.proxyGroupLeadingIcon(iconURL)
+                    } else {
+                        // Groups without an icon still reserve the column, so every group
+                        // name starts on the same line as the quick rows above.
+                        Color.clear
+                            .frame(width: T.leadingIconColumn, height: T.leadingIconColumn)
                     }
 
                     Text(group.name)
@@ -342,7 +391,7 @@ extension ProxyTabView {
                     {
                         await appViewModel.refreshGroupLatency(group)
                     }
-                    .frame(width: 18, alignment: .center)
+                    .frame(width: T.actionColumn, alignment: .center)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
@@ -352,8 +401,13 @@ extension ProxyTabView {
             .background(self.nativeActionRowBackground(isHovered))
         } content: { dismiss in
             self.popoverHeader(name: group.name, count: nodeCount) {
+                // Reserve the icon column even without an icon, so the node list below is
+                // indented by the same amount for every group.
                 if let iconURL {
                     self.proxyGroupLeadingIcon(iconURL)
+                } else {
+                    Color.clear
+                        .frame(width: T.leadingIconColumn, height: T.leadingIconColumn)
                 }
             } trailing: {
                 self.providerActionButton(
@@ -397,14 +451,13 @@ extension ProxyTabView {
         }
     }
 
-    func proxyGroupMainColumnWidths(
-        totalWidth: CGFloat,
-        hasLeadingIcon: Bool) -> (name: CGFloat, current: CGFloat, delay: CGFloat)
+    func proxyGroupMainColumnWidths(totalWidth: CGFloat) -> (name: CGFloat, current: CGFloat, delay: CGFloat)
     {
-        let iconWidth: CGFloat = hasLeadingIcon ? T.rowLeadingIcon : 0
-        let actionWidth: CGFloat = 18
-        let spacingCount: CGFloat = hasLeadingIcon ? 4 : 3
-        let spacing = T.space1 * spacingCount
+        // The icon column is always reserved, even for groups without an icon, so the
+        // column widths do not depend on which group is rendered.
+        let iconWidth = T.leadingIconColumn
+        let actionWidth = T.actionColumn
+        let spacing = (T.leadingIconGap * 3) + T.space1
         let available = max(0, totalWidth - iconWidth - actionWidth - spacing)
         let name = floor(available * 0.34)
         let delay = floor(available * 0.20)
@@ -412,11 +465,18 @@ extension ProxyTabView {
         return (name, current, delay)
     }
 
+    func providerLeadingIcon() -> some View {
+        Image(systemName: "externaldrive.fill")
+            .font(.app(size: T.FontSize.caption, weight: .semibold))
+            .foregroundStyle(self.nativeTeal.opacity(T.Opacity.solid))
+            .frame(width: T.leadingIconColumn, height: T.leadingIconColumn)
+    }
+
     func proxyGroupLeadingIcon(_ iconURL: URL) -> some View {
         ProxyGroupIconView(url: iconURL)
             .frame(
-                width: T.rowLeadingIcon,
-                height: T.rowLeadingIcon,
+                width: T.leadingIconColumn,
+                height: T.leadingIconColumn,
                 alignment: .center)
     }
 
@@ -431,13 +491,13 @@ extension ProxyTabView {
         count: String? = nil,
         @ViewBuilder trailing: () -> some View = { EmptyView() }) -> some View
     {
-        HStack(spacing: T.space6) {
+        HStack(spacing: T.leadingIconGap) {
             Image(systemName: symbol)
                 .font(.app(size: T.FontSize.caption, weight: .semibold))
                 .foregroundStyle(nativeTertiaryLabel)
                 .frame(
-                    width: T.rowLeadingIcon,
-                    height: T.rowLeadingIcon,
+                    width: T.leadingIconColumn,
+                    height: T.leadingIconColumn,
                     alignment: .center)
 
             Text(title)
@@ -468,7 +528,7 @@ extension ProxyTabView {
         @ViewBuilder trailing: () -> some View = { EmptyView() }) -> some View
     {
         VStack(spacing: 0) {
-            HStack(spacing: T.space1) {
+            HStack(spacing: T.leadingIconGap) {
                 leading()
 
                 Text(name)
@@ -546,8 +606,17 @@ private struct FrozenPopoverNodesList<Row: View>: View {
         self._frozenNodes = State(initialValue: nodes)
     }
 
+    /// The list freezes once it has rows, so a refresh mid-popover does not make the
+    /// rows jump under the pointer. An empty snapshot is not frozen: the provider detail
+    /// often arrives after the popover opens, and freezing the empty result would leave
+    /// it showing the placeholder forever.
+    private var visibleNodes: [String] {
+        self.frozenNodes.isEmpty ? self.nodes : self.frozenNodes
+    }
+
     var body: some View {
-        if self.frozenNodes.isEmpty {
+        let nodes = self.visibleNodes
+        if nodes.isEmpty {
             Text(self.emptyText)
                 .font(.app(size: T.FontSize.caption, weight: .regular))
                 .foregroundStyle(self.nativeSecondaryLabel)
@@ -556,8 +625,13 @@ private struct FrozenPopoverNodesList<Row: View>: View {
                 .padding(.vertical, T.space4)
         } else {
             VStack(spacing: 0) {
-                ForEach(self.frozenNodes, id: \.self) { node in
+                ForEach(nodes, id: \.self) { node in
                     self.row(node)
+                }
+            }
+            .onChange(of: self.nodes) { newNodes in
+                if self.frozenNodes.isEmpty, !newNodes.isEmpty {
+                    self.frozenNodes = newNodes
                 }
             }
         }
@@ -572,6 +646,9 @@ private struct ProxyGroupPopoverNodeItem: View {
     let delayColor: Color
     let isTesting: Bool
     let selected: Bool
+    /// A provider node is not part of a policy group, so it has nothing to be selected
+    /// as. Hiding the radio mark stops it from looking like an unselected choice.
+    var showsSelectionMark = true
     let testLatencyLabel: String
     let onTestLatency: () async -> Void
     let action: () -> Void
@@ -586,13 +663,23 @@ private struct ProxyGroupPopoverNodeItem: View {
 
     var body: some View {
         HStack(spacing: T.space1) {
+            // Nodes sit under their group in the popover, so they are indented by the
+            // group's icon column and marked with a rule. Without it the node list reads
+            // as a sibling of the group rather than its contents.
+            Rectangle()
+                .fill(self.nativeSeparator.opacity(0.6))
+                .frame(width: T.stroke)
+                .frame(width: T.leadingIconColumn + T.leadingIconGap, alignment: .leading)
+
             Button(action: self.action) {
                 HStack(spacing: T.space1) {
-                    Image(systemName: self.selected ? "checkmark.circle.fill" : "circle")
-                        .font(.app(size: T.FontSize.caption, weight: .semibold))
-                        .foregroundStyle(self
-                            .selected ? self.nativeAccent : self.nativeTertiaryLabel)
-                        .frame(width: 11, alignment: .center)
+                    if self.showsSelectionMark {
+                        Image(systemName: self.selected ? "checkmark.circle.fill" : "circle")
+                            .font(.app(size: T.FontSize.caption, weight: .semibold))
+                            .foregroundStyle(self
+                                .selected ? self.nativeAccent : self.nativeTertiaryLabel)
+                            .frame(width: 11, alignment: .center)
+                    }
 
                     Text(self.title)
                         .font(.app(size: T.FontSize.body, weight: self.selected ? .semibold : .medium))
@@ -653,7 +740,7 @@ private struct ProxyGroupPopoverNodeItem: View {
                         .font(.app(size: T.FontSize.caption, weight: .semibold))
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(self.isTestButtonHovered ? self.testButtonTint : self.testButtonBaseTint)
-                        .frame(width: 18, height: 18, alignment: .center)
+                        .frame(width: T.actionColumn, height: T.actionColumn, alignment: .center)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)

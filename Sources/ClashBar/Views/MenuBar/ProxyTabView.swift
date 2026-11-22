@@ -66,7 +66,6 @@ struct ProxyTabView: TranslatingView {
 
     @State var copiedProxyCommandTarget: ProxyCommandCopyTarget?
     @State var proxyCommandCopyResetTask: Task<Void, Never>?
-    @State var hoveredProviderName: String?
     @State private var configMenuFeedback: [ConfigMenuAction: ConfigMenuActionFeedback] = [:]
     @State private var configMenuActionTasks: [ConfigMenuAction: Task<Void, Never>] = [:]
     @State private var configMenuFeedbackClearTask: Task<Void, Never>?
@@ -752,7 +751,7 @@ struct ProxyTabView: TranslatingView {
         trailingFitsContent: Bool = false,
         @ViewBuilder trailing: () -> some View) -> some View
     {
-        HStack(spacing: T.space6) {
+        HStack(spacing: T.leadingIconGap) {
             self.quickIcon(symbol: symbol, foreground: foreground)
             Text(title)
                 .font(.app(size: T.FontSize.body, weight: .medium))
@@ -853,7 +852,7 @@ struct ProxyTabView: TranslatingView {
     var tunModeQuickToggleRow: some View {
         self.quickRowContent(
             title: self.tr("ui.quick.tun_mode"),
-            symbol: "shield.lefthalf.filled",
+            symbol: ConfigOverrideField.tunEnable.symbol,
             foreground: nativePositive,
             trailingFitsContent: true)
         {
@@ -880,7 +879,7 @@ struct ProxyTabView: TranslatingView {
         Image(systemName: symbol)
             .font(.app(size: T.FontSize.body, weight: .semibold))
             .foregroundStyle(foreground)
-            .frame(width: 18, height: 18, alignment: .center)
+            .frame(width: T.leadingIconColumn, height: T.leadingIconColumn, alignment: .center)
     }
 
     var systemProxyCompositeIcon: some View {
@@ -892,7 +891,7 @@ struct ProxyTabView: TranslatingView {
                 tint: self.systemProxyHelperProcessTint,
                 alignment: .trailing)
         }
-        .frame(width: 18, height: 18)
+        .frame(width: T.leadingIconColumn, height: T.leadingIconColumn)
         .help(self.systemProxyCompositeIconHelp)
     }
 
@@ -900,7 +899,7 @@ struct ProxyTabView: TranslatingView {
         Image(systemName: "network")
             .font(.app(size: T.FontSize.body, weight: .semibold))
             .foregroundStyle(tint)
-            .frame(width: 18, height: 18)
+            .frame(width: T.leadingIconColumn, height: T.leadingIconColumn)
             .mask(alignment: alignment) {
                 Rectangle()
                     .frame(width: 9)
