@@ -276,6 +276,14 @@ extension AppViewModel {
             self.finishAppUpdateInstall()
             return "ui.footer.app_update.install_location"
         } catch {
+            // The sheet shows one generic message for every failure, so the step and the
+            // underlying reason only survive if they are logged here.
+            let reason: String = if case let .staged(stage, underlying) = error as? AppUpdateInstaller.Failure {
+                "\(stage.rawValue): \(underlying)"
+            } else {
+                AppUpdateInstaller.describe(error)
+            }
+            self.appendLog(level: "error", message: self.tr("log.app_update.install_failed", reason))
             self.finishAppUpdateInstall()
             return "ui.footer.app_update.install_failed"
         }

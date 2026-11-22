@@ -240,6 +240,7 @@
 "log.app_update.relaunch_rolled_back" = "Update to v%@ failed and rolled back to v%@";
 "log.app_update.relaunch_open_failed" = "Installed v%@ but could not relaunch automatically";
 "log.app_update.relaunch_timeout" = "Timed out waiting for the previous process to exit after installing v%@";
+"log.app_update.install_failed" = "Update install failed (%@)";
 "ui.footer.core_upgrade.running" = "Updating...";
 "ui.footer.core_upgrade.success" = "Updated";
 "ui.footer.core_upgrade.latest" = "Up to Date";

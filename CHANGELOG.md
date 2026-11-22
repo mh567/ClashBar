@@ -1,3 +1,18 @@
+## v1.1.21
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.21-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 修复应用内更新偶发显示安装失败，并让失败原因可查。
+
+### 📝 更新日志 (Changelog)
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **更新后重启失败**：替换完成后重新拉起应用时增加退避重试，跨过系统对应用包的缓存刷新，不再偶发提示安装失败。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **更新失败原因不可查**：安装失败会在日志中记录具体步骤与原因，例如校验不通过或某个命令执行失败，便于定位。
+
+---
+
 ## v1.1.20
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.20-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

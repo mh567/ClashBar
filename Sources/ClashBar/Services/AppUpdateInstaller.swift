@@ -24,6 +24,18 @@ struct AppUpdateRelaunchOutcome: Codable, Equatable {
 }
 
 enum AppUpdateInstaller {
+    /// Which step failed. `install_failed` alone cannot tell a blocked download from a
+    /// rejected code signature, and the update UI shows one message for all of them, so the
+    /// step travels with the error and goes into the log.
+    enum Stage: String, Sendable {
+        case download
+        case verifyChecksum
+        case verifyBundle
+        case stageImage
+        case replaceBundle
+        case scheduleRelaunch
+    }
+
     enum Failure: Error {
         case incompatibleAsset
         case nonWritableInstallation
@@ -31,6 +43,7 @@ enum AppUpdateInstaller {
         case verification
         case command(String)
         case replacement
+        case staged(Stage, underlying: String)
     }
 
     static var architecture: String {
@@ -51,7 +64,9 @@ enum AppUpdateInstaller {
             .appendingPathComponent("app-update-relaunch.json", isDirectory: false)
     }
 
-    static func readRelaunchOutcome(at url: URL = AppUpdateInstaller.relaunchOutcomeURL()) -> AppUpdateRelaunchOutcome? {
+    static func readRelaunchOutcome(
+        at url: URL = AppUpdateInstaller.relaunchOutcomeURL()
+    ) -> AppUpdateRelaunchOutcome? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
@@ -99,22 +114,37 @@ enum AppUpdateInstaller {
 
         var request = URLRequest(url: asset.downloadURL)
         request.timeoutInterval = 30
-        let response = try await AppUpdateDownloader().download(request, to: download) { fraction in
-            onPhase(.downloading(progress: fraction))
+        let response: URLResponse?
+        do {
+            response = try await AppUpdateDownloader().download(request, to: download) { fraction in
+                onPhase(.downloading(progress: fraction))
+            }
+        } catch {
+            throw Failure.staged(.download, underlying: error.localizedDescription)
         }
         guard let http = response as? HTTPURLResponse, http.statusCode == 200,
               http.url?.scheme == "https"
-        else { throw Failure.download }
+        else {
+            let status = (response as? HTTPURLResponse).map { "\($0.statusCode)" } ?? "non-http"
+            throw Failure.staged(.download, underlying: "status \(status)")
+        }
 
         onPhase(.verifying)
-        let input = try FileHandle(forReadingFrom: download)
+        let input: FileHandle
+        do {
+            input = try FileHandle(forReadingFrom: download)
+        } catch {
+            throw Failure.staged(.verifyChecksum, underlying: error.localizedDescription)
+        }
         defer { try? input.close() }
         var hasher = SHA256()
         while let chunk = try input.read(upToCount: 1_048_576), !chunk.isEmpty {
             hasher.update(data: chunk)
         }
         let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
-        guard digest == expectedHash else { throw Failure.verification }
+        guard digest == expectedHash else {
+            throw Failure.staged(.verifyChecksum, underlying: "sha256 mismatch")
+        }
 
         let stage = try files.url(
             for: .itemReplacementDirectory,
@@ -132,22 +162,42 @@ enum AppUpdateInstaller {
         try files.createDirectory(at: mount, withIntermediateDirectories: false)
         let replacement = stage.appendingPathComponent(installed.lastPathComponent)
         onPhase(.installing)
-        try self.stageApplication(from: image, mountedAt: mount, to: replacement)
+        do {
+            try self.stageApplication(from: image, mountedAt: mount, to: replacement)
+        } catch {
+            throw Failure.staged(.stageImage, underlying: self.describe(error))
+        }
 
-        let infoURL = replacement.appendingPathComponent("Contents/Info.plist")
-        let info = try PropertyListSerialization.propertyList(from: Data(contentsOf: infoURL), format: nil)
-        guard let info = info as? [String: Any],
-              info["CFBundleIdentifier"] as? String == installedID,
-              info["CFBundleExecutable"] as? String == "ClashBar",
-              info["CFBundleShortVersionString"] as? String == release.displayVersion,
-              info["ClashBarBundlesMihomoCore"] as? Bool == bundlesCore
-        else { throw Failure.verification }
-        try self.run("/usr/bin/codesign", ["--verify", "--deep", "--strict", replacement.path])
+        do {
+            let infoURL = replacement.appendingPathComponent("Contents/Info.plist")
+            let info = try PropertyListSerialization.propertyList(
+                from: Data(contentsOf: infoURL), format: nil)
+            guard let info = info as? [String: Any],
+                  info["CFBundleIdentifier"] as? String == installedID,
+                  info["CFBundleExecutable"] as? String == "ClashBar",
+                  info["CFBundleShortVersionString"] as? String == release.displayVersion,
+                  info["ClashBarBundlesMihomoCore"] as? Bool == bundlesCore
+            else {
+                throw Failure.staged(.verifyBundle, underlying: "unexpected Info.plist")
+            }
+        } catch let failure as Failure {
+            throw failure
+        } catch {
+            throw Failure.staged(.verifyBundle, underlying: error.localizedDescription)
+        }
+
+        do {
+            try self.run("/usr/bin/codesign", ["--verify", "--deep", "--strict", replacement.path])
+        } catch {
+            throw Failure.staged(.verifyBundle, underlying: self.describe(error))
+        }
         try Task.checkCancellation()
 
         // Keep the running bundle intact on disk until the new bundle is fully verified.
         guard renameatx_np(AT_FDCWD, replacement.path, AT_FDCWD, installed.path, UInt32(RENAME_SWAP)) == 0
-        else { throw Failure.replacement }
+        else {
+            throw Failure.staged(.replaceBundle, underlying: String(cString: strerror(errno)))
+        }
         keepStage = true
 
         do {
@@ -162,7 +212,22 @@ enum AppUpdateInstaller {
             if renameatx_np(AT_FDCWD, replacement.path, AT_FDCWD, installed.path, UInt32(RENAME_SWAP)) == 0 {
                 keepStage = false
             }
-            throw error
+            throw Failure.staged(.scheduleRelaunch, underlying: self.describe(error))
+        }
+    }
+
+    /// A one-line description of a failure for the log, keeping the command name that the
+    /// `Failure.command` case already carries.
+    static func describe(_ error: Error) -> String {
+        switch error as? Failure {
+        case let .staged(_, underlying): underlying
+        case let .command(name): "command failed: \(name)"
+        case .verification: "verification failed"
+        case .replacement: "bundle swap failed"
+        case .download: "download failed"
+        case .incompatibleAsset: "no compatible asset"
+        case .nonWritableInstallation: "installation not writable"
+        case nil: error.localizedDescription
         }
     }
 
@@ -206,14 +271,18 @@ enum AppUpdateInstaller {
         /bin/sleep 0.1
     done
     attempts=0
-    while [ "$attempts" -lt 3 ]; do
+    # Right after the bundle swap, LaunchServices may still resolve the old inode, so the
+    # first `open` can fail even though the new app is fine. Back off further on each try
+    # instead of giving up after three quick attempts, which used to show as a failed
+    # update that succeeded on a manual retry.
+    for wait_seconds in 1 1 2 3 4 5; do
         if /usr/bin/open -n -a "$installed_path"; then
             write_status succeeded
             /bin/rm -rf "$stage_path"
             exit 0
         fi
         attempts=$((attempts + 1))
-        /bin/sleep 0.5
+        /bin/sleep "$wait_seconds"
     done
     failed_path="$installed_path.failed-update"
     if /bin/mv -f "$installed_path" "$failed_path"; then
@@ -266,7 +335,9 @@ enum AppUpdateInstaller {
         process.standardError = FileHandle.nullDevice
         try process.run()
         process.waitUntilExit()
-        guard process.terminationStatus == 0 else { throw Failure.command(URL(fileURLWithPath: executable).lastPathComponent) }
+        guard process.terminationStatus == 0 else {
+            throw Failure.command(URL(fileURLWithPath: executable).lastPathComponent)
+        }
     }
 }
 

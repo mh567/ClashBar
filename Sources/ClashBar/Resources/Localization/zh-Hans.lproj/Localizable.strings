@@ -244,6 +244,7 @@
 "log.app_update.relaunch_rolled_back" = "更新到 v%@ 失败，已回滚到 v%@";
 "log.app_update.relaunch_open_failed" = "更新到 v%@ 后无法自动启动";
 "log.app_update.relaunch_timeout" = "更新到 v%@ 后等待旧进程退出超时";
+"log.app_update.install_failed" = "更新安装失败（%@）";
 "ui.footer.core_upgrade.running" = "更新中...";
 "ui.footer.core_upgrade.success" = "已更新";
 "ui.footer.core_upgrade.latest" = "已是最新";
