@@ -27,19 +27,18 @@ extension MenuBarRootView {
         }
 
         var cornerRadius: CGFloat {
-            self.isMode ? 10 : 0
+            self.isMode ? 7 : 0
         }
 
+        /// The mode row is a two-line (icon + label) target. At 38pt it was tall enough
+        /// to catch clicks meant for the tab row right below it, so it is flattened; the
+        /// tab row keeps its own height.
         var rowHeight: CGFloat {
-            self.isMode ? 38 : 26
-        }
-
-        var stackSpacing: CGFloat {
-            self.isMode ? T.space1 : 0
+            self.isMode ? 30 : 26
         }
 
         var contentVerticalPadding: CGFloat {
-            self.isMode ? 3 : 2
+            self.isMode ? 1 : 2
         }
 
         func selectedFillOpacity(isDark: Bool) -> CGFloat {
@@ -108,10 +107,12 @@ extension MenuBarRootView {
             }
         } label: {
             ZStack(alignment: .bottom) {
-                VStack(spacing: style.stackSpacing) {
+                // A single line (icon beside label) keeps the flattened row readable; a
+                // stacked icon-over-text would not fit in 30pt.
+                HStack(spacing: T.space4) {
                     if switchingThisMode {
                         ProgressView()
-                            .controlSize(.small)
+                            .controlSize(.mini)
                             .tint(self.segmentedAccentColor(style: style))
                     } else {
                         Image(systemName: symbol)
@@ -127,6 +128,7 @@ extension MenuBarRootView {
                         .lineLimit(1)
                         .foregroundStyle(self.segmentedLabelColor(style: style, selected: selected, hovered: hovered))
                 }
+                .padding(.horizontal, T.space4)
                 .padding(.vertical, style.contentVerticalPadding)
                 .frame(maxWidth: .infinity)
                 .frame(height: style.rowHeight)

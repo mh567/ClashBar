@@ -55,6 +55,8 @@ extension MenuBarRootView {
         let mihomoSymbol = "cpu"
 
         return VStack(spacing: 0) {
+            // The padding sits inside the background so the base band spans the full
+            // panel width instead of stopping at the content inset.
             HStack(spacing: T.space6) {
                 HStack(spacing: T.space6) {
                     self.footerInfo(
@@ -73,7 +75,9 @@ extension MenuBarRootView {
                 }
                 .fixedSize(horizontal: true, vertical: false)
             }
-            .menuRowPadding(vertical: T.space2)
+            .padding(.horizontal, T.space4)
+            .padding(.vertical, T.space2)
+            .frame(maxWidth: .infinity)
             .background(self.footerSurfaceBackground)
         }
         .alert(
@@ -87,7 +91,16 @@ extension MenuBarRootView {
     }
 
     var footerSurfaceBackground: some View {
-        self.nativeControlSurface()
+        // The panel is already a rounded card clipped at its own corners, so the footer
+        // must not draw a second rounded chip inside it. A flat band with a hairline on
+        // top reads as the panel's base plate instead.
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(self.nativeSeparator)
+                .frame(height: T.stroke)
+            Rectangle()
+                .fill(self.nativeControlFill.opacity(self.isDarkAppearance ? 0.30 : 0.20))
+        }
     }
 
     var footerMihomoVersionText: String {
