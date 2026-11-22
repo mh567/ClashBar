@@ -92,6 +92,12 @@ struct ConfigOverrides: Codable, Equatable {
         }
         return body
     }
+
+    /// A patch needs the observed TUN enable state when it would otherwise send
+    /// `tun` without it.
+    static func touchesTun(_ keys: some Sequence<String>) -> Bool {
+        keys.contains { $0 == ConfigOverrideField.tunEnable.rawValue || $0 == ConfigOverrideField.tunStack.rawValue }
+    }
 }
 
 @MainActor

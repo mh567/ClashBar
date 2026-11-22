@@ -336,10 +336,12 @@ final class AppViewModel: ObservableObject {
 
     var isModeSwitchEnabled: Bool {
         (self.isRemoteTarget || self.processManager.isRunning) && self.apiStatus == .healthy
+            && !self.isApplyingCoreSettings
     }
 
     var isTunToggleEnabled: Bool {
         (self.isRemoteTarget || self.isRuntimeRunning) && !self.isCoreActionProcessing && !self.isTunSyncing
+            && !self.isApplyingCoreSettings
     }
 
     var autoStartCoreEnabled: Bool {

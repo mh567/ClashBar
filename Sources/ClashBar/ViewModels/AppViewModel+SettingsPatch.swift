@@ -46,11 +46,14 @@ extension AppViewModel {
     func patchConfigBody(
         _ body: [String: ConfigPatchValue],
         syncingKey: String,
-        successMessage: String,
-        isCoreSettingsBatch: Bool = false,
+        successMessage: String? = nil,
+        baseline: ConfigSnapshot? = nil,
         origin: ConfigOverrideOrigin = .explicitSave) async -> Bool
     {
-        guard !self.isConfigMutationBusy, self.isRemoteTarget || self.isRuntimeRunning else { return false }
+        guard !self.isConfigMutationBusy, self.isRemoteTarget || self.isRuntimeRunning else {
+            self.settingsErrorMessage = tr("app.settings.error.busy", syncingKey)
+            return false
+        }
         let overrideID = self.activeConfigOverrideID
         settingsFeedbackClearTask?.cancel()
         settingsFeedbackClearTask = nil
@@ -68,22 +71,22 @@ extension AppViewModel {
 
         let patchKeysDescription = body.keys.sorted().joined(separator: ", ")
         var expected = body
-        var baseline: ConfigSnapshot?
+        var observedBaseline = baseline
         var didSendPatch = false
         var didAttemptSystemProxySync = false
         do {
-            if isCoreSettingsBatch || shouldSyncSystemProxyPort {
-                baseline = try await self.fetchRuntimeConfigSnapshot()
-                let enableKey = ConfigOverrideField.tunEnable.rawValue
-                if body[ConfigOverrideField.tunStack.rawValue] != nil, body[enableKey] == nil {
-                    expected[enableKey] = baseline?.tunEnabled.map(ConfigPatchValue.bool)
-                }
+            if observedBaseline == nil, ConfigOverrides.touchesTun(body.keys) || shouldSyncSystemProxyPort {
+                observedBaseline = try await self.fetchRuntimeConfigSnapshot()
             }
-            if shouldSyncSystemProxyPort, let baseline {
-                let intended = baseline.overrideFields.merging(body) { _, edit in edit }
+            let enableKey = ConfigOverrideField.tunEnable.rawValue
+            if body[ConfigOverrideField.tunStack.rawValue] != nil, body[enableKey] == nil {
+                expected[enableKey] = observedBaseline?.tunEnabled.map(ConfigPatchValue.bool)
+            }
+            if shouldSyncSystemProxyPort, let observedBaseline {
+                let intended = observedBaseline.overrideFields.merging(body) { _, edit in edit }
                 _ = try self.validatedSystemProxyPorts(for: intended)
             }
-            let request = try await self.coreSettingsPatch(body, baseline: baseline)
+            let request = try await self.coreSettingsPatch(body, baseline: observedBaseline)
             ensureAPIClient()
             appendLog(level: "info", message: "PATCH /configs [\(patchKeysDescription)]")
             didSendPatch = true
@@ -93,8 +96,8 @@ extension AppViewModel {
             guard expected.allSatisfy({ ConfigOverrides.matches($0.value, observed.overrideFields[$0.key]) }) else {
                 throw ConfigApplicationError.unverified
             }
-            if shouldSyncSystemProxyPort, let baseline {
-                let previousPorts = self.systemProxyPorts(from: baseline)
+            if shouldSyncSystemProxyPort, let observedBaseline {
+                let previousPorts = self.systemProxyPorts(from: observedBaseline)
                 let newPorts = self.systemProxyPorts(from: observed)
                 if newPorts != previousPorts {
                     didAttemptSystemProxySync = true
@@ -105,17 +108,19 @@ extension AppViewModel {
                 }
             }
             self.recordConfigOverrides(body, for: overrideID, origin: origin)
-            settingsSavedMessage = successMessage
-            self.scheduleSettingsFeedbackAutoClearIfNeeded(message: successMessage)
+            if let successMessage {
+                self.settingsSavedMessage = successMessage
+                self.scheduleSettingsFeedbackAutoClearIfNeeded(message: successMessage)
+            }
             return true
         } catch {
             appendLog(
                 level: "error",
                 message: "PATCH /configs failed [\(patchKeysDescription)]: \(error.localizedDescription)")
             var detail = self.configApplicationErrorMessage(error)
-            if didSendPatch, let baseline {
+            if didSendPatch, let observedBaseline {
                 do {
-                    try await self.restoreSettingsPatch(matching: baseline, keys: Set(expected.keys))
+                    try await self.restoreSettingsPatch(matching: observedBaseline, keys: Set(expected.keys))
                     if didAttemptSystemProxySync {
                         try await self.synchronizeSystemProxyWithRuntimeConfig()
                     }

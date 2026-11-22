@@ -1,3 +1,23 @@
+## v1.1.13
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.13-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 内核设置按键提交，一项失败不再拖累其他改动。
+
+### 📝 更新日志 (Changelog)
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **按键分组提交**：代理端口一组、TUN 开关与协议栈一组，其余字段各自独立，一组未通过校验只回滚自己，其他组照常生效。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **失败提示失真**：多组失败时不再固定显示「其余更改已应用」，全部失败时明确说明没有更改生效，并逐组列出具体原因。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **应用期间的并发改动**：提交内核设置时禁用顶部模式切换与 TUN 开关，避免中途改动被本次提交覆盖。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **忙碌提示**：另一项操作正在进行时提示「未提交」，不再误报为配置校验失败。
+
+---
+
 ## v1.1.12
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.12-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

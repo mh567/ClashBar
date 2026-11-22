@@ -14,7 +14,7 @@ enum TunModeError: LocalizedError {
 @MainActor
 extension AppViewModel {
     func toggleTunMode(_ enabled: Bool) async {
-        guard !self.isConfigMutationBusy else { return }
+        guard !self.isConfigMutationBusy, !self.isApplyingCoreSettings else { return }
         let overrideID = self.activeConfigOverrideID
 
         let applied = await self.applyTunMode(enabled, requestPermissionsIfMissing: true)

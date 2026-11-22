@@ -281,6 +281,7 @@
 "app.settings.error.overlay_invalid_log_level" = "Settings overlay failed: invalid log-level %@";
 "app.settings.error.overlay_port_range" = "Settings overlay failed: %@ port must be in 0~65535";
 "app.settings.error.save_failed" = "%@ save failed: %@";
+"app.settings.error.busy" = "%@ was not submitted: another operation is in progress. Try again shortly.";
 "app.settings.overlay_success" = "Local settings preserved and applied over current config";
 "app.launch_at_login.error.unsupported_environment" = "Launch at login can only be enabled from the packaged .app build";
 "app.launch_at_login.error.requires_approval" = "Allow ClashBar in System Settings > General > Login Items";
@@ -491,6 +492,8 @@
 "ui.settings.core.undo_restore" = "Undo pending restore for %@";
 "ui.settings.core.select_stack" = "Select a TUN stack for the next apply";
 "ui.settings.core.invalid_port" = "Enter a value from 0 to 65535 for %@.";
+"ui.settings.core.partial_failed" = "Some settings did not apply: %@. The other changes were saved.";
+"ui.settings.core.all_failed" = "Settings did not apply: %@";
 "ui.settings.core.system_proxy_requires_port" = "Keep an HTTP, SOCKS, or mixed port enabled while System Proxy is on.";
 "ui.settings.exceptions.retry" = "Retry";
 "ui.settings.section.app" = "App settings";

@@ -285,6 +285,7 @@
 "app.settings.error.overlay_invalid_log_level" = "设置覆盖失败: log-level 非法值 %@";
 "app.settings.error.overlay_port_range" = "设置覆盖失败: %@ 端口必须在 0~65535";
 "app.settings.error.save_failed" = "%@ 保存失败: %@";
+"app.settings.error.busy" = "%@ 未提交：另一项操作正在进行，请稍后重试。";
 "app.settings.overlay_success" = "已保留设置并覆盖当前配置";
 "app.launch_at_login.error.unsupported_environment" = "仅可在 .app 包内启用开机自启，请运行打包后的应用";
 "app.launch_at_login.error.requires_approval" = "需要在系统设置 > 通用 > 登录项中允许 ClashBar";
@@ -491,6 +492,8 @@
 "ui.settings.core.undo_restore" = "撤销「%@」的待恢复操作";
 "ui.settings.core.select_stack" = "为下次应用选择 TUN 协议栈";
 "ui.settings.core.invalid_port" = "%@请输入 0 到 65535 之间的值。";
+"ui.settings.core.partial_failed" = "部分设置未生效：%@。其余更改已应用。";
+"ui.settings.core.all_failed" = "设置未生效：%@";
 "ui.settings.core.system_proxy_requires_port" = "系统代理开启时，至少保留一个 HTTP、SOCKS 或混合端口。";
 "ui.settings.exceptions.retry" = "重试";
 "ui.settings.section.app" = "应用设置";

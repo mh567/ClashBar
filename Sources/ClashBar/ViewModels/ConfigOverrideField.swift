@@ -18,9 +18,50 @@ enum ConfigOverrideGroup: String, CaseIterable, Identifiable {
     }
 }
 
+/// A failed apply either has one group's own reason, which is shown verbatim, or
+/// several groups' reasons, which need a banner that does not overstate the outcome.
+enum CoreSettingsFailure: Equatable {
+    case reason(String)
+    case grouped(key: String, details: String)
+}
+
 enum ConfigOverrideOrigin {
     case explicitSave
     case runtimeAction
+}
+
+/// Fields that constrain each other share a submit group so one patch carries the
+/// whole constraint. Independent fields get their own group, so a failure in one
+/// field never rolls back an unrelated one.
+enum ConfigSubmitGroup: Hashable {
+    case ports
+    case tun
+    case field(ConfigOverrideField)
+
+    /// Declaration order of `ConfigOverrideField`, so a single apply issues a
+    /// stable sequence of patches.
+    static let ordered: [ConfigSubmitGroup] = {
+        var groups: [ConfigSubmitGroup] = []
+        for field in ConfigOverrideField.allCases where !groups.contains(field.submitGroup) {
+            groups.append(field.submitGroup)
+        }
+        return groups
+    }()
+
+    var fields: [ConfigOverrideField] {
+        ConfigOverrideField.allCases.filter { $0.submitGroup == self }
+    }
+
+    var titleKey: String {
+        switch self {
+        case .ports:
+            "ui.settings.group.ports"
+        case .tun:
+            "ui.quick.tun_mode"
+        case let .field(field):
+            field.titleKey
+        }
+    }
 }
 
 enum ConfigOverrideField: String, CaseIterable, Identifiable {
@@ -65,7 +106,21 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
     /// TUN enable and stack render as one combined row, so the group card needs to
     /// know to leave them out of the ordinary row loop.
     var isTunSetting: Bool {
-        self == .tunEnable || self == .tunStack
+        self.submitGroup == .tun
+    }
+
+    /// Ports compete for the same listening surface and the system proxy binds to
+    /// one of them, so they commit together. TUN enable and stack travel as one
+    /// object and share a single permission check. Everything else is independent.
+    var submitGroup: ConfigSubmitGroup {
+        switch self {
+        case .port, .socksPort, .mixedPort, .redirPort, .tproxyPort:
+            .ports
+        case .tunEnable, .tunStack:
+            .tun
+        default:
+            .field(self)
+        }
     }
 
     var titleKey: String {

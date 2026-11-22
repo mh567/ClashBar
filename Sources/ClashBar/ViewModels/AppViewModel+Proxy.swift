@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 extension AppViewModel {
     func switchMode(to target: CoreMode) async {
-        guard self.isModeSwitchEnabled, !self.modeSwitchInFlight else { return }
+        guard self.isModeSwitchEnabled, !self.modeSwitchInFlight, !self.isApplyingCoreSettings else { return }
         self.modeSwitchInFlight = true
         defer { self.modeSwitchInFlight = false }
         await self.patchSingleConfig("mode", value: .string(target.rawValue), origin: .runtimeAction)

@@ -218,6 +218,20 @@ final class ConfigOverridesTests: XCTestCase {
         XCTAssertEqual(model.pendingCoreSettingsCount, 0)
     }
 
+    func testSubmitGroupsBindConstrainedFieldsAndIsolateTheRest() {
+        XCTAssertEqual(ConfigSubmitGroup.ordered, [
+            .field(.allowLan), .field(.ipv6), .field(.tcpConcurrent),
+            .ports, .tun, .field(.logLevel), .field(.mode),
+        ])
+        XCTAssertEqual(ConfigSubmitGroup.ports.fields, [.port, .socksPort, .mixedPort, .redirPort, .tproxyPort])
+        XCTAssertEqual(ConfigSubmitGroup.tun.fields, [.tunEnable, .tunStack])
+        XCTAssertEqual(ConfigSubmitGroup.field(.logLevel).fields, [.logLevel])
+
+        let groups = ConfigSubmitGroup.ordered.flatMap(\.fields)
+        XCTAssertEqual(Set(groups), Set(ConfigOverrideField.allCases), "every field must belong to a submit group")
+        XCTAssertEqual(groups.count, Set(groups).count, "a field must not sit in two submit groups")
+    }
+
     @MainActor
     func testRestoreAllIsANoOpWithoutLoadedConfig() async {
         let model = self.makeIsolatedModel()
@@ -230,6 +244,29 @@ final class ConfigOverridesTests: XCTestCase {
         await model.applyCoreSettings()
 
         XCTAssertEqual(model.configOverrides.values[id], ["mixed-port": .int(7891)])
+    }
+
+    @MainActor
+    func testFailureBannerDoesNotClaimOthersAppliedWhenNoneDid() {
+        let model = self.makeIsolatedModel()
+        let failures: [ConfigSubmitGroup: String] = [.ports: "port reason", .tun: "tun reason"]
+
+        let noneApplied = model.coreSettingsFailure(failures, appliedGroups: 0)
+        guard case let .grouped(key, details) = noneApplied else {
+            return XCTFail("Two failing groups must use a grouped banner, got \(noneApplied)")
+        }
+        XCTAssertEqual(key, "ui.settings.core.all_failed")
+        XCTAssertTrue(details.contains("port reason"), details)
+        XCTAssertTrue(details.contains("tun reason"), details)
+
+        let someApplied = model.coreSettingsFailure(failures, appliedGroups: 1)
+        guard case let .grouped(partialKey, _) = someApplied else {
+            return XCTFail("Two failing groups must use a grouped banner, got \(someApplied)")
+        }
+        XCTAssertEqual(partialKey, "ui.settings.core.partial_failed")
+
+        XCTAssertEqual(model.coreSettingsFailure([.tun: "tun reason"], appliedGroups: 0), .reason("tun reason"))
+        XCTAssertEqual(model.coreSettingsFailure([.ports: "port reason"], appliedGroups: 2), .reason("port reason"))
     }
 
     func testOverrideFieldKeysExistInBothLocalizations() throws {
@@ -259,7 +296,10 @@ final class ConfigOverridesTests: XCTestCase {
             "ui.settings.core.undo_restore",
             "ui.settings.core.select_stack",
             "ui.settings.core.invalid_port",
+            "ui.settings.core.partial_failed",
+            "ui.settings.core.all_failed",
             "ui.settings.core.system_proxy_requires_port",
+            "app.settings.error.busy",
             "ui.settings.exceptions.retry",
             "ui.settings.overrides.item.restore_help",
             "ui.settings.section.app",
