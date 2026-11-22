@@ -19,6 +19,16 @@ struct MenuBarDropdownPlacementOptions {
     let preserveHorizontalPosition: Bool
 }
 
+struct SideAttachedPlacementOptions {
+    let contentSize: CGSize
+    let preferredWidth: CGFloat?
+    let maximumHeight: CGFloat?
+    let screenPadding: CGFloat
+    let edgeOverlap: CGFloat
+    /// Side this popover already settled on, so a later layout pass keeps it.
+    let pinnedSide: PanelAttachmentSide?
+}
+
 struct PanelAnchorContext {
     let visibleFrame: CGRect
     let anchorFrameOnScreen: CGRect
@@ -79,50 +89,61 @@ struct PanelAnchorContext {
             attachmentSide: nil)
     }
 
-    func sideAttachedPlacement(
-        contentSize: CGSize,
-        preferredWidth: CGFloat?,
-        maximumHeight: CGFloat?,
-        screenPadding: CGFloat,
-        edgeOverlap: CGFloat)
-        -> PanelPlacement?
-    {
+    func sideAttachedPlacement(_ options: SideAttachedPlacementOptions) -> PanelPlacement? {
         guard let hostWindowFrame else { return nil }
 
-        let contentWidth = preferredWidth ?? contentSize.width
+        let screenPadding = options.screenPadding
+        let edgeOverlap = options.edgeOverlap
+        let pinnedSide = options.pinnedSide
+
+        let contentWidth = options.preferredWidth ?? options.contentSize.width
         let panelWidth = min(max(1, contentWidth), self.visibleFrame.width - (screenPadding * 2))
 
-        let preferredHeight: CGFloat = if let maximumHeight {
-            min(contentSize.height, maximumHeight + (screenPadding * 2))
+        let preferredHeight: CGFloat = if let maximumHeight = options.maximumHeight {
+            min(options.contentSize.height, maximumHeight + (screenPadding * 2))
         } else {
-            contentSize.height
+            options.contentSize.height
         }
         let panelHeight = min(max(40, preferredHeight), self.visibleFrame.height - (screenPadding * 2))
 
         let rightAvailable = max(0, self.visibleFrame.maxX - hostWindowFrame.maxX)
         let leftAvailable = max(0, hostWindowFrame.minX - self.visibleFrame.minX)
 
-        let attachmentSide: PanelAttachmentSide = if rightAvailable >= panelWidth {
-            .right
-        } else if leftAvailable >= panelWidth {
-            .left
+        // The popover is placed once with a provisional size and again after its content
+        // lays out. Deciding the side from the current size each time can pick one side
+        // first and the other second, which reads as the panel appearing on the left and
+        // then jumping across. A side, once chosen, is pinned for that popover.
+        //
+        // The pin is dropped only when its side has no room left at all (the screen or the
+        // host window moved away), because there is nothing to show there. Dropping it
+        // whenever the provisional width does not fit would be the very jump the pin exists
+        // to prevent: the panel is capped to the room anyway, so it fits by construction.
+        let preferredSide = self.preferredSide(
+            panelWidth: panelWidth, rightAvailable: rightAvailable, leftAvailable: leftAvailable)
+        let attachmentSide: PanelAttachmentSide = if let pinnedSide,
+            self.room(for: pinnedSide, right: rightAvailable, left: leftAvailable) > 0
+        {
+            pinnedSide
         } else {
-            rightAvailable >= leftAvailable ? .right : .left
+            preferredSide
         }
 
         let sideAvailable = attachmentSide == .right ? rightAvailable : leftAvailable
-        let resolvedPanelWidth = max(1, min(panelWidth, sideAvailable))
-        let panelSize = CGSize(width: resolvedPanelWidth, height: panelHeight)
 
-        let rawOriginX: CGFloat = switch attachmentSide {
+        // Cap by the room on that side minus the padding, so the origin below lands inside the
+        // padded area on its own. That removes the need for a horizontal clamp, and with it
+        // the clamp's width-dependence that used to slide an open panel.
+        let widthCap = max(1, sideAvailable - screenPadding + edgeOverlap)
+        let panelSize = CGSize(width: min(panelWidth, widthCap), height: panelHeight)
+
+        // Each side hangs off the host's own edge, so neither origin depends on the panel's
+        // width. That is what keeps an open popover still while its content grows.
+        let originX: CGFloat = switch attachmentSide {
         case .right:
             hostWindowFrame.maxX - edgeOverlap
         case .left:
             hostWindowFrame.minX - panelSize.width + edgeOverlap
         }
-        let minX = self.visibleFrame.minX + screenPadding
-        let maxX = self.visibleFrame.maxX - screenPadding - panelSize.width
-        let clampedX = max(minX, min(rawOriginX, maxX))
 
         let desiredY = self.anchorFrameOnScreen.midY - panelSize.height / 2
         let minY = self.visibleFrame.minY + screenPadding
@@ -130,8 +151,30 @@ struct PanelAnchorContext {
         let clampedY = max(minY, min(desiredY, maxY))
 
         return PanelPlacement(
-            frame: CGRect(origin: CGPoint(x: clampedX, y: clampedY), size: panelSize),
+            frame: CGRect(origin: CGPoint(x: originX, y: clampedY), size: panelSize),
             lockedOriginX: nil,
             attachmentSide: attachmentSide)
+    }
+
+    private func room(
+        for side: PanelAttachmentSide, right: CGFloat, left: CGFloat) -> CGFloat
+    {
+        side == .right ? right : left
+    }
+
+    /// The side that fits the panel, preferring the one with more room when neither does.
+    /// "Fits" is checked against the panel's own width so a wide panel does not get pinned
+    /// to a side too narrow for it.
+    private func preferredSide(
+        panelWidth: CGFloat, rightAvailable: CGFloat, leftAvailable: CGFloat)
+        -> PanelAttachmentSide
+    {
+        if rightAvailable >= panelWidth {
+            .right
+        } else if leftAvailable >= panelWidth {
+            .left
+        } else {
+            rightAvailable >= leftAvailable ? .right : .left
+        }
     }
 }

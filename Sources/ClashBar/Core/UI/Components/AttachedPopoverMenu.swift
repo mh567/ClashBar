@@ -310,7 +310,9 @@ private struct SideAttachedPopoverHost<Content: View>: NSViewRepresentable {
         private weak var hostWindow: NSWindow?
         private var clickMonitor: Any?
         private var resignActiveObserver: NSObjectProtocol?
-        private var attachmentSide: PanelAttachmentSide = .right
+        /// The side this popover settled on. Non-nil means `showOrUpdate` already placed it
+        /// once, so later layout passes keep that side instead of re-deciding.
+        private var pinnedSide: PanelAttachmentSide?
         private let edgeOverlap: CGFloat = 1
         private var reportedVisible = false
 
@@ -363,20 +365,27 @@ private struct SideAttachedPopoverHost<Content: View>: NSViewRepresentable {
             self.panel.appearance = hostWindow.effectiveAppearance
             self.hostingController.view.appearance = hostWindow.effectiveAppearance
 
+            // `fittingSize` is only meaningful once the view has laid out. Reading it first
+            // returns the hosting view's placeholder size, so the panel would be placed at a
+            // guess and then visibly resize on the next pass.
+            self.forceLayout()
+
             let fitting = self.hostingController.view.fittingSize
             guard let anchorContext = PanelAnchorContext.resolve(for: anchorView) else { return }
             guard let placement = anchorContext.sideAttachedPlacement(
-                contentSize: fitting,
-                preferredWidth: self.width,
-                maximumHeight: self.maxHeight,
-                screenPadding: 6,
-                edgeOverlap: self.edgeOverlap)
+                SideAttachedPlacementOptions(
+                    contentSize: fitting,
+                    preferredWidth: self.width,
+                    maximumHeight: self.maxHeight,
+                    screenPadding: 6,
+                    edgeOverlap: self.edgeOverlap,
+                    pinnedSide: self.pinnedSide))
             else {
                 return
             }
 
             if let attachmentSide = placement.attachmentSide {
-                self.attachmentSide = attachmentSide
+                self.pinnedSide = attachmentSide
             }
 
             self.panel.setFrame(placement.frame, display: true)
@@ -390,7 +399,15 @@ private struct SideAttachedPopoverHost<Content: View>: NSViewRepresentable {
             self.startClickMonitorIfNeeded()
         }
 
+        /// Lays the hosted content out so `fittingSize` reflects the real content instead of
+        /// the placeholder rect the hosting view starts with.
+        private func forceLayout() {
+            let view = self.hostingController.view
+            view.layoutSubtreeIfNeeded()
+        }
+
         func closeNow() {
+            self.pinnedSide = nil
             self.stopClickMonitor()
             if self.panel.isVisible {
                 self.panel.orderOut(nil)

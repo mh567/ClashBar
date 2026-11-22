@@ -1,3 +1,21 @@
+## v1.1.18
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.18-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 修复子菜单弹层的换边与位移，并收敛内核设置与节点页的多余元素。
+
+### 📝 更新日志 (Changelog)
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **子菜单左右换边**：点击代理组时，二级菜单不再先出现在一侧再跳到另一侧；弹层选定的贴靠侧在打开期间保持不变。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **子菜单首帧尺寸**：弹层先完成布局再显示，不再以占位尺寸出现后突然变大。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **代理组二级菜单留白**：展开后的节点列表去掉左侧整块空白。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **内核设置空白长条**：内核设置面板下方的操作条只在确实有内容时出现，单项覆写时不再留下空白底卡。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **代理提供者交互**：刷新按钮不再被整行点击区吞掉，与配置管理、系统代理的操作方式一致。
+
+---
+
 ## v1.1.17
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.17-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
