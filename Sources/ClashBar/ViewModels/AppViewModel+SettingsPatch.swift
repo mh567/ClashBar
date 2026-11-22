@@ -26,8 +26,6 @@ extension AppViewModel {
         settingsPort = snapshot.port
         settingsSocksPort = snapshot.socksPort
         settingsMixedPort = snapshot.mixedPort
-        settingsRedirPort = snapshot.redirPort
-        settingsTProxyPort = snapshot.tproxyPort
         suppressSettingsPersistence = false
     }
 

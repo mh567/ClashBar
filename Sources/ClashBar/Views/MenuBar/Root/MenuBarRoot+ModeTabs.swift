@@ -157,9 +157,10 @@ extension MenuBarRootView {
 
         return Button {
             guard self.rootViewModel.currentTab != tab else { return }
-            withAnimation(.snappy(duration: 0.18)) {
-                self.rootViewModel.syncCurrentTab(tab)
-            }
+            // No animation here: the tab drives the panel height, which the NSPanel
+            // changes immediately, so animating would interpolate content while the
+            // window snaps. The indicator keeps its own scoped animation below.
+            self.rootViewModel.syncCurrentTab(tab)
         } label: {
             ZStack(alignment: .bottom) {
                 Text(self.tr(tab.titleKey))

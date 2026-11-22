@@ -6,6 +6,8 @@ struct ConfigOverrides: Codable, Equatable {
     var values: [UUID: [String: ConfigPatchValue]] = [:]
     // Older stores did not distinguish temporary and explicit mode choices.
     private var modeOverridesAreExplicit: Bool? = true
+    // Stores written before the Linux-only ports were removed from the UI.
+    private var removedPortOverridesArePruned: Bool?
 
     mutating func migrateLegacyModeOverrides() -> Bool {
         guard self.modeOverridesAreExplicit != true else { return false }
@@ -14,6 +16,22 @@ struct ConfigOverrides: Codable, Equatable {
             self.values[id] = fields.isEmpty ? nil : fields
         }
         self.modeOverridesAreExplicit = true
+        return true
+    }
+
+    /// `redir-port` and `tproxy-port` no longer have rows, so a stored override for them
+    /// could never be seen or undone. It would still count towards the override badge and
+    /// Restore All, so prune it once.
+    mutating func pruneRemovedFieldOverrides() -> Bool {
+        guard self.removedPortOverridesArePruned != true else { return false }
+        let removed = ["redir-port", "tproxy-port"]
+        for (id, var fields) in self.values {
+            for key in removed {
+                fields.removeValue(forKey: key)
+            }
+            self.values[id] = fields.isEmpty ? nil : fields
+        }
+        self.removedPortOverridesArePruned = true
         return true
     }
 

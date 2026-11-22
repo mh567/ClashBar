@@ -55,8 +55,6 @@ final class AppViewModel: ObservableObject {
     @Published var logLevel: String = "info"
     @Published var port: Int?
     @Published var socksPort: Int?
-    @Published var redirPort: Int?
-    @Published var tproxyPort: Int?
     @Published var mixedPort: Int = 7890
 
     @Published var mihomoBinaryPath: String = "-"
@@ -226,8 +224,6 @@ final class AppViewModel: ObservableObject {
     @Published var settingsPort: String = "0"
     @Published var settingsSocksPort: String = "0"
     @Published var settingsMixedPort: String = "7890"
-    @Published var settingsRedirPort: String = "0"
-    @Published var settingsTProxyPort: String = "0"
 
     @Published var configOverrides = ConfigOverrides()
     @Published var coreSettingsEdits: [ConfigOverrideField: ConfigPatchValue] = [:]

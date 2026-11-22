@@ -67,6 +67,9 @@ extension AppViewModel {
         if self.configOverrides.migrateLegacyModeOverrides() {
             self.persistConfigOverrides()
         }
+        if self.configOverrides.pruneRemovedFieldOverrides() {
+            self.persistConfigOverrides()
+        }
         self.remoteConfigSubscriptions = loadPersistedRemoteConfigSubscriptions()
         self.pendingRemoteConfigReplacements =
             self.decodeFromDefaults([String: PendingRemoteConfigReplacement].self, key: "remote-config-replacements") ?? [:]

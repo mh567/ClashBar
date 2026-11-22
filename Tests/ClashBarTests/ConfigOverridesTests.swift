@@ -59,15 +59,28 @@ final class ConfigOverridesTests: XCTestCase {
         XCTAssertFalse(ConfigOverrideField.isPersistableOnRuntimeChange("mode"))
     }
 
-    func testEveryFieldHasAtMostOneGroupAndGroupsPartitionTheRest() {
-        let grouped = ConfigOverrideGroup.allCases.flatMap { group in
+    func testEveryFieldSitsInAtMostOneSection() {
+        let sections = ConfigOverrideGroup.allCases.flatMap { group in
             ConfigOverrideField.allCases.filter { $0.group == group }
         }
-        XCTAssertEqual(grouped.count, Set(grouped).count, "a field must not sit in two groups")
+        XCTAssertEqual(sections.count, Set(sections).count, "a field must not appear in two sections")
 
+        // `mode` is switched from the top bar, so it stays in the model without a row.
         let ungrouped = ConfigOverrideField.allCases.filter { $0.group == nil }
-        XCTAssertEqual(Set(grouped).union(ungrouped), Set(ConfigOverrideField.allCases))
-        XCTAssertEqual(ungrouped, [.logLevel, .mode], "log level and mode sit above the groups")
+        XCTAssertEqual(ungrouped, [.mode], "only mode has no core-settings row")
+        XCTAssertEqual(Set(sections).union(ungrouped), Set(ConfigOverrideField.allCases))
+    }
+
+    /// Mirrors the config file: general switches, the standalone `tun:` block, ports.
+    func testSectionsFollowTheConfigFileOrder() {
+        XCTAssertEqual(ConfigOverrideGroup.allCases, [.general, .tun, .ports])
+        XCTAssertEqual(
+            ConfigOverrideField.allCases.filter { $0.group == .general },
+            [.allowLan, .ipv6, .tcpConcurrent, .logLevel])
+        XCTAssertEqual(ConfigOverrideField.allCases.filter { $0.group == .tun }, [.tunEnable, .tunStack])
+        XCTAssertEqual(
+            ConfigOverrideField.allCases.filter { $0.group == .ports },
+            [.port, .socksPort, .mixedPort])
     }
 
 
@@ -170,6 +183,35 @@ final class ConfigOverridesTests: XCTestCase {
         XCTAssertEqual(reopened.values[first]?["mode"], .string("direct"))
     }
 
+    /// `redir-port` and `tproxy-port` lost their rows, so a stored override for them
+    /// could never be seen or undone; it must not keep counting towards the badge.
+    func testMigrationPrunesOverridesForRemovedPorts() throws {
+        let id = UUID()
+        var store = ConfigOverrides()
+        store.identities["/a.yaml"] = id
+        store.values[id] = [
+            "redir-port": .int(7893),
+            "tproxy-port": .int(7894),
+            "mixed-port": .int(7890),
+        ]
+        var reopened = try JSONDecoder().decode(ConfigOverrides.self, from: JSONEncoder().encode(store))
+
+        XCTAssertTrue(reopened.pruneRemovedFieldOverrides())
+        XCTAssertEqual(reopened.values[id], ["mixed-port": .int(7890)])
+
+        // Idempotent: a second run must not report another change.
+        XCTAssertFalse(reopened.pruneRemovedFieldOverrides())
+
+        // An entry that only held removed keys is dropped entirely.
+        var portOnly = ConfigOverrides()
+        portOnly.identities["/b.yaml"] = id
+        portOnly.values[id] = ["redir-port": .int(7893)]
+        var reopenedPortOnly = try JSONDecoder().decode(
+            ConfigOverrides.self, from: JSONEncoder().encode(portOnly))
+        XCTAssertTrue(reopenedPortOnly.pruneRemovedFieldOverrides())
+        XCTAssertNil(reopenedPortOnly.values[id])
+    }
+
     @MainActor
     func testProxyExceptionSaveWaitsForMutationAndCapturesOnlySubmittedText() async throws {
         let model = self.makeIsolatedModel()
@@ -215,10 +257,10 @@ final class ConfigOverridesTests: XCTestCase {
 
     @MainActor
     func testOnlyConstrainedGroupsWaitForExplicitApply() {
-        XCTAssertTrue(ConfigSubmitGroup.ports.requiresExplicitApply)
-        XCTAssertTrue(ConfigSubmitGroup.tun.requiresExplicitApply)
+        XCTAssertEqual(ConfigSubmitGroup.ports.applyMode, .unifiedCommit)
+        XCTAssertEqual(ConfigSubmitGroup.tun.applyMode, .unifiedCommit)
         for group in ConfigSubmitGroup.ordered where group != .ports && group != .tun {
-            XCTAssertFalse(group.requiresExplicitApply, "\(group) must commit on change")
+            XCTAssertEqual(group.applyMode, .immediate, "\(group) must hot-apply on change")
         }
     }
 
@@ -274,7 +316,7 @@ final class ConfigOverridesTests: XCTestCase {
             .field(.allowLan), .field(.ipv6), .field(.tcpConcurrent),
             .ports, .tun, .field(.logLevel), .field(.mode),
         ])
-        XCTAssertEqual(ConfigSubmitGroup.ports.fields, [.port, .socksPort, .mixedPort, .redirPort, .tproxyPort])
+        XCTAssertEqual(ConfigSubmitGroup.ports.fields, [.port, .socksPort, .mixedPort])
         XCTAssertEqual(ConfigSubmitGroup.tun.fields, [.tunEnable, .tunStack])
         XCTAssertEqual(ConfigSubmitGroup.field(.logLevel).fields, [.logLevel])
 

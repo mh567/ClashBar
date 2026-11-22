@@ -9,7 +9,7 @@ extension AppViewModel {
         guard self.coreSettingsRestores.isEmpty else {
             return self.coreSettingsEdits.count + self.coreSettingsRestores.count
         }
-        return self.coreSettingsEdits.keys.filter { $0.submitGroup.requiresExplicitApply }.count
+        return self.coreSettingsEdits.keys.filter { $0.submitGroup.applyMode == .unifiedCommit }.count
     }
 
     /// Waits for queued immediate commits to drain.
@@ -34,7 +34,7 @@ extension AppViewModel {
         guard !self.isApplyingCoreSettings else { return }
         self.coreSettingsRestores.remove(field.rawValue)
         let runtime = self.runtimeValue(for: field)
-        if field.group == .ports, case let .string(text) = value, case let .string(current)? = runtime {
+        if field.submitGroup == .ports, case let .string(text) = value, case let .string(current)? = runtime {
             let parsed = ProxyPortsDraft.parsedPort(text)
             self.coreSettingsEdits[field] = parsed != nil && parsed == ProxyPortsDraft.parsedPort(current)
                 ? nil : value
@@ -44,7 +44,7 @@ extension AppViewModel {
         self.coreSettingsError = nil
         // A staged restore reloads the file and reapplies every override at once, so
         // it must own the whole batch; committing a field now would be undone by it.
-        if !field.submitGroup.requiresExplicitApply, self.coreSettingsRestores.isEmpty {
+        if field.submitGroup.applyMode == .immediate, self.coreSettingsRestores.isEmpty {
             self.commitCoreSettingImmediately(field)
         }
     }
@@ -108,7 +108,7 @@ extension AppViewModel {
         // Edits staged while a restore was pending were never committed, and the last
         // undo hides the Apply button, so hand them to the immediate-commit queue.
         guard self.coreSettingsRestores.isEmpty else { return }
-        for draft in Array(self.coreSettingsEdits.keys) where !draft.submitGroup.requiresExplicitApply {
+        for draft in Array(self.coreSettingsEdits.keys) where draft.submitGroup.applyMode == .immediate {
             self.commitCoreSettingImmediately(draft)
         }
     }
@@ -133,7 +133,7 @@ extension AppViewModel {
         var blocked: [ConfigSubmitGroup: String] = [:]
         for field in ConfigOverrideField.allCases {
             guard let edit = self.coreSettingsEdits[field] else { continue }
-            if field.group == .ports {
+            if field.submitGroup == .ports {
                 guard case let .string(text) = edit, let port = ProxyPortsDraft.parsedPort(text) else {
                     blocked[field.submitGroup] = blocked[field.submitGroup]
                         ?? self.tr("ui.settings.core.invalid_port", self.tr(field.titleKey))
@@ -272,8 +272,6 @@ extension AppViewModel {
                 (\.settingsPort, \.port),
                 (\.settingsSocksPort, \.socksPort),
                 (\.settingsMixedPort, \.mixedPort),
-                (\.settingsRedirPort, \.redirPort),
-                (\.settingsTProxyPort, \.tproxyPort),
             ])
         suppressSettingsPersistence = false
 
@@ -291,9 +289,7 @@ extension AppViewModel {
             logLevel: settingsLogLevel,
             port: settingsPort,
             socksPort: settingsSocksPort,
-            mixedPort: settingsMixedPort,
-            redirPort: settingsRedirPort,
-            tproxyPort: settingsTProxyPort)
+            mixedPort: settingsMixedPort)
     }
 
 }

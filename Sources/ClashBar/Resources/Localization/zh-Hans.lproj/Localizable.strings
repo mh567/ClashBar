@@ -191,8 +191,6 @@
 "ui.settings.port.port" = "HTTP 端口";
 "ui.settings.port.socks" = "SOCKS 端口";
 "ui.settings.port.mixed" = "混合端口";
-"ui.settings.port.redir" = "重定向端口";
-"ui.settings.port.tproxy" = "TProxy 端口";
 "ui.settings.system_proxy_exceptions_empty" = "暂无绕过规则。";
 "ui.settings.system_proxy_exceptions_hint" = "写入 macOS 系统代理的例外列表，只在系统代理开启时生效。TUN 模式下的排除网段由配置文件的 tun.route-exclude-address 决定，与此处无关。";
 "ui.settings.system_proxy_exceptions.inactive" = "未生效";
@@ -494,7 +492,8 @@
 "ui.settings.exceptions.retry" = "重试";
 "ui.settings.section.app" = "应用设置";
 "ui.settings.section.core" = "内核设置";
-"ui.settings.group.network" = "网络";
+"ui.settings.group.general" = "通用";
+"ui.settings.group.tun" = "TUN";
 "ui.settings.group.ports" = "代理端口";
 "ui.settings.overrides.item.restore_help" = "将「%@」标记为恢复跟随配置";
 "ui.settings.tun_stack" = "TUN 协议栈";

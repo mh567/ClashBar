@@ -25,14 +25,31 @@ final class TunRecoveryTests: XCTestCase {
             logLevel: ConfigLogLevel.info.rawValue,
             port: "0",
             socksPort: "0",
-            mixedPort: "7890",
-            redirPort: "0",
-            tproxyPort: "0")
+            mixedPort: "7890")
     }
 
     private func config(tunEnabled: Bool) throws -> ConfigSnapshot {
         let json = #"{"tun":{"enable":\#(tunEnabled)},"mixed-port":7890,"mode":"rule","log-level":"info"}"#
         return try JSONDecoder().decode(ConfigSnapshot.self, from: Data(json.utf8))
+    }
+
+    /// The two Linux-only ports were dropped from the snapshot. Persisted data written
+    /// by an older build still carries them, so decoding must ignore the extra keys
+    /// instead of failing and losing the user's saved settings.
+    func testSnapshotDecodesDataWrittenBeforeTheLinuxPortsWereRemoved() throws {
+        let legacy = """
+            {"mode":"rule","allowLan":false,"ipv6":true,"tcpConcurrent":true,"tunEnabled":true,
+             "logLevel":"info","port":"7891","socksPort":"7892","mixedPort":"7890",
+             "redirPort":"7893","tproxyPort":"7894"}
+            """
+        let snapshot = try JSONDecoder().decode(
+            EditableSettingsSnapshot.self, from: Data(legacy.utf8))
+
+        XCTAssertEqual(snapshot.mixedPort, "7890")
+        XCTAssertEqual(snapshot.port, "7891")
+        XCTAssertEqual(snapshot.socksPort, "7892")
+        XCTAssertTrue(snapshot.ipv6)
+        XCTAssertTrue(snapshot.tunEnabled)
     }
 
     func testWithTunEnabledKeepsEveryOtherField() {
@@ -48,8 +65,6 @@ final class TunRecoveryTests: XCTestCase {
         XCTAssertEqual(updated.port, original.port)
         XCTAssertEqual(updated.socksPort, original.socksPort)
         XCTAssertEqual(updated.mixedPort, original.mixedPort)
-        XCTAssertEqual(updated.redirPort, original.redirPort)
-        XCTAssertEqual(updated.tproxyPort, original.tproxyPort)
     }
 
     func testPendingTunRecoverySurvivesBootSnapshotWithTunOff() throws {

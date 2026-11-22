@@ -276,8 +276,6 @@ struct EditableSettingsSnapshot: Equatable, Codable {
     let port: String
     let socksPort: String
     let mixedPort: String
-    let redirPort: String
-    let tproxyPort: String
 
     private enum CodingKeys: String, CodingKey {
         case mode
@@ -289,8 +287,6 @@ struct EditableSettingsSnapshot: Equatable, Codable {
         case port
         case socksPort
         case mixedPort
-        case redirPort
-        case tproxyPort
     }
 
     init(config: ConfigSnapshot) {
@@ -303,8 +299,6 @@ struct EditableSettingsSnapshot: Equatable, Codable {
         self.port = config.port.map(String.init) ?? ""
         self.socksPort = config.socksPort.map(String.init) ?? ""
         self.mixedPort = config.mixedPort.map(String.init) ?? ""
-        self.redirPort = config.redirPort.map(String.init) ?? ""
-        self.tproxyPort = config.tproxyPort.map(String.init) ?? ""
     }
 
     init(
@@ -316,9 +310,7 @@ struct EditableSettingsSnapshot: Equatable, Codable {
         logLevel: String,
         port: String,
         socksPort: String,
-        mixedPort: String,
-        redirPort: String,
-        tproxyPort: String)
+        mixedPort: String)
     {
         self.mode = mode
         self.allowLan = allowLan
@@ -329,8 +321,6 @@ struct EditableSettingsSnapshot: Equatable, Codable {
         self.port = port
         self.socksPort = socksPort
         self.mixedPort = mixedPort
-        self.redirPort = redirPort
-        self.tproxyPort = tproxyPort
     }
 
     func withTunEnabled(_ tunEnabled: Bool?) -> EditableSettingsSnapshot {
@@ -344,9 +334,7 @@ struct EditableSettingsSnapshot: Equatable, Codable {
             logLevel: self.logLevel,
             port: self.port,
             socksPort: self.socksPort,
-            mixedPort: self.mixedPort,
-            redirPort: self.redirPort,
-            tproxyPort: self.tproxyPort)
+            mixedPort: self.mixedPort)
     }
 
     init(from decoder: Decoder) throws {
@@ -360,8 +348,6 @@ struct EditableSettingsSnapshot: Equatable, Codable {
         self.port = try container.decode(String.self, forKey: .port)
         self.socksPort = try container.decode(String.self, forKey: .socksPort)
         self.mixedPort = try container.decode(String.self, forKey: .mixedPort)
-        self.redirPort = try container.decode(String.self, forKey: .redirPort)
-        self.tproxyPort = try container.decode(String.self, forKey: .tproxyPort)
     }
 }
 

@@ -1,7 +1,10 @@
 import Foundation
 
+/// The section a field is shown under. Mirrors the natural sections of the config
+/// file: general switches, the standalone `tun:` block, then the listening ports.
 enum ConfigOverrideGroup: String, CaseIterable, Identifiable {
-    case network
+    case general
+    case tun
     case ports
 
     var id: String {
@@ -10,8 +13,10 @@ enum ConfigOverrideGroup: String, CaseIterable, Identifiable {
 
     var titleKey: String {
         switch self {
-        case .network:
-            "ui.settings.group.network"
+        case .general:
+            "ui.settings.group.general"
+        case .tun:
+            "ui.settings.group.tun"
         case .ports:
             "ui.settings.group.ports"
         }
@@ -28,6 +33,16 @@ enum CoreSettingsFailure: Equatable {
 enum ConfigOverrideOrigin {
     case explicitSave
     case runtimeAction
+}
+
+/// How a change to a field takes effect. This is independent of the visible section:
+/// a section groups what belongs together, this decides when it is written.
+enum CoreApplyMode: Equatable {
+    /// Hot-applied through `PATCH /configs`. Safe to send the moment it changes.
+    case immediate
+    /// One operation touches several fields, so sending each change on its own would
+    /// mean several reloads. They collect into a draft and go out as one commit.
+    case unifiedCommit
 }
 
 /// Fields that constrain each other share a submit group so one patch carries the
@@ -63,11 +78,14 @@ enum ConfigSubmitGroup: Hashable {
         }
     }
 
-    /// A constrained group validates its fields against each other, so it keeps a
-    /// draft until the user applies. Every other group commits as soon as a field
-    /// changes.
-    var requiresExplicitApply: Bool {
-        self == .ports || self == .tun
+    /// Ports share one listening surface and TUN's switch and stack are written as one
+    /// object, so either group would reload the core once per field if each change went
+    /// out alone. They use the unified commit; everything else is safe to hot-apply.
+    var applyMode: CoreApplyMode {
+        switch self {
+        case .ports, .tun: .unifiedCommit
+        case .field: .immediate
+        }
     }
 }
 
@@ -78,8 +96,6 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
     case port
     case socksPort = "socks-port"
     case mixedPort = "mixed-port"
-    case redirPort = "redir-port"
-    case tproxyPort = "tproxy-port"
     case tunEnable = "tun.enable"
     case tunStack = "tun.stack"
     case logLevel = "log-level"
@@ -98,15 +114,18 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
         self.rawValue
     }
 
-    /// `logLevel` is the most frequently changed field, so it sits at the top of
-    /// the core section on its own rather than inside a group.
+    /// The section this field is shown under, or `nil` when it has no row of its own.
+    /// `mode` is switched from the top bar, so it stays in the model for Restore All
+    /// but is never rendered as a core-settings row.
     var group: ConfigOverrideGroup? {
         switch self {
-        case .allowLan, .ipv6, .tcpConcurrent, .tunEnable, .tunStack:
-            .network
-        case .port, .socksPort, .mixedPort, .redirPort, .tproxyPort:
+        case .logLevel, .allowLan, .ipv6, .tcpConcurrent:
+            .general
+        case .tunEnable, .tunStack:
+            .tun
+        case .port, .socksPort, .mixedPort:
             .ports
-        case .logLevel, .mode:
+        case .mode:
             nil
         }
     }
@@ -122,7 +141,7 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
     /// object and share a single permission check. Everything else is independent.
     var submitGroup: ConfigSubmitGroup {
         switch self {
-        case .port, .socksPort, .mixedPort, .redirPort, .tproxyPort:
+        case .port, .socksPort, .mixedPort:
             .ports
         case .tunEnable, .tunStack:
             .tun
@@ -149,10 +168,6 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
             "ui.settings.port.socks"
         case .mixedPort:
             "ui.settings.port.mixed"
-        case .redirPort:
-            "ui.settings.port.redir"
-        case .tproxyPort:
-            "ui.settings.port.tproxy"
         case .tunEnable:
             "ui.quick.tun_mode"
         case .tunStack:
@@ -178,10 +193,6 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
             "wave.3.right"
         case .mixedPort:
             "arrow.triangle.merge"
-        case .redirPort:
-            "arrowshape.turn.up.right"
-        case .tproxyPort:
-            "shield.lefthalf.filled"
         case .tunEnable:
             "network.badge.shield.half.filled"
         case .tunStack:
@@ -258,10 +269,6 @@ extension AppViewModel {
         self.configOverrideFieldStates.filter { $0.field.group == group }
     }
 
-    var ungroupedConfigOverrideFieldStates: [ConfigOverrideFieldState] {
-        self.configOverrideFieldStates.filter { $0.field.group == nil }
-    }
-
     /// TUN route exclusions come from the running core, falling back to the value
     /// parsed once when the config was loaded. Never parses YAML here.
     var tunRouteExcludeAddressDisplay: (lines: [String], fromCore: Bool) {
@@ -300,10 +307,6 @@ extension AppViewModel {
             self.portValue(self.settingsSocksPort)
         case .mixedPort:
             self.portValue(self.settingsMixedPort)
-        case .redirPort:
-            self.portValue(self.settingsRedirPort)
-        case .tproxyPort:
-            self.portValue(self.settingsTProxyPort)
         case .tunEnable:
             .bool(self.isTunEnabled)
         case .tunStack:

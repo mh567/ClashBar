@@ -6,20 +6,24 @@ final class PanelHeightPolicyTests: XCTestCase {
     private var listTabs: [RootTab] { [.rules, .connections, .logs] }
     private var measuredTabs: [RootTab] { [.proxy, .system] }
 
-    func testListBudgetUsesEachTabsOwnRowHeight() {
-        let expected: [RootTab: CGFloat] = [
-            .rules: MenuBarLayoutTokens.rowHeight * 9,
-            .connections: PanelHeightPolicy.ListRowHeight.connections * 9,
-            .logs: PanelHeightPolicy.ListRowHeight.logs * 11,
-        ]
-
-        for (tab, budget) in expected {
-            let height = PanelHeightPolicy.requestedHeight(
-                for: tab, measuredHeight: 0, usableHeight: 4000)
-            XCTAssertEqual(
-                height, budget,
-                "\(tab) must budget its own row height, not a shared constant")
+    /// The whole point of the shared budget: switching between list tabs must not
+    /// resize the panel, so every list tab requests the same height.
+    func testEveryListTabRequestsTheSameHeight() {
+        let heights = self.listTabs.map { tab in
+            PanelHeightPolicy.requestedHeight(for: tab, measuredHeight: 0, usableHeight: 4000)
         }
+        XCTAssertEqual(Set(heights).count, 1, "list tabs must not resize the panel when switching")
+        XCTAssertEqual(heights.first, PanelHeightPolicy.ListHeight.budget)
+    }
+
+    func testBudgetShowsAtLeastNineConnectionRows() {
+        XCTAssertGreaterThanOrEqual(
+            PanelHeightPolicy.visibleRowCount(for: .connections), 9,
+            "the budget is sized from the tallest per-row list, so it must still show nine of them")
+        XCTAssertGreaterThan(
+            PanelHeightPolicy.visibleRowCount(for: .rules),
+            PanelHeightPolicy.visibleRowCount(for: .connections),
+            "shorter rows mean more of them fit in the same budget")
     }
 
     func testConnectionsRowHeightComesFromItsThreeLines() {
@@ -27,9 +31,9 @@ final class PanelHeightPolicyTests: XCTestCase {
             (16 * 3)
                 + (MenuBarLayoutTokens.space2 * 2)
                 + (MenuBarLayoutTokens.space2 * 2)
-        XCTAssertEqual(PanelHeightPolicy.ListRowHeight.connections, expected)
+        XCTAssertEqual(PanelHeightPolicy.ListHeight.connectionsRow, expected)
         XCTAssertGreaterThan(
-            PanelHeightPolicy.ListRowHeight.connections, MenuBarLayoutTokens.rowHeight,
+            PanelHeightPolicy.ListHeight.connectionsRow, MenuBarLayoutTokens.rowHeight,
             "connections rows stack three lines and are taller than a rules row")
     }
 
@@ -38,7 +42,7 @@ final class PanelHeightPolicyTests: XCTestCase {
             (PanelHeightPolicy.captionLineHeight * 3)
                 + (MenuBarLayoutTokens.space2 * 2)
                 + (MenuBarLayoutTokens.space4 * 2)
-        XCTAssertEqual(PanelHeightPolicy.ListRowHeight.logs, expected)
+        XCTAssertEqual(PanelHeightPolicy.ListHeight.logsRow, expected)
         XCTAssertEqual(PanelHeightPolicy.captionLineHeight, 12, "10pt monospaced line box")
     }
 
@@ -93,7 +97,7 @@ final class PanelHeightPolicyTests: XCTestCase {
         let display = PanelHeightPolicy.requestedHeight(for: .rules, measuredHeight: 0, usableHeight: 1400)
 
         XCTAssertEqual(tinyScreen, 200, "a short screen bounds the list")
-        XCTAssertEqual(display, budget, "a tall screen is bounded by the row budget, not the screen")
+        XCTAssertEqual(display, budget, "a tall screen is bounded by the budget, not the screen")
         XCTAssertLessThan(display, 1400, "a list must not fill a large display")
     }
 
@@ -107,15 +111,13 @@ final class PanelHeightPolicyTests: XCTestCase {
     func testClassificationIsTheSingleSourceOfTruth() {
         for tab in self.listTabs {
             XCTAssertFalse(PanelHeightPolicy.measuresOwnHeight(tab))
-            guard let budget = PanelHeightPolicy.rowBudget(for: tab) else {
-                return XCTFail("\(tab) must be classified as a list")
-            }
-            XCTAssertGreaterThan(budget.rows, 0)
-            XCTAssertGreaterThan(budget.rowHeight, 0)
+            XCTAssertEqual(PanelHeightPolicy.contentKind(for: tab), .list)
+            XCTAssertGreaterThan(PanelHeightPolicy.visibleRowCount(for: tab), 0)
         }
         for tab in self.measuredTabs {
             XCTAssertTrue(PanelHeightPolicy.measuresOwnHeight(tab))
             XCTAssertEqual(PanelHeightPolicy.contentKind(for: tab), .measured)
+            XCTAssertEqual(PanelHeightPolicy.visibleRowCount(for: tab), 0)
         }
     }
 }

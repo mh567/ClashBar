@@ -261,8 +261,6 @@ extension AppViewModel {
 
         port = config.port
         socksPort = config.socksPort
-        redirPort = config.redirPort
-        tproxyPort = config.tproxyPort
         mixedPort = config.mixedPort ?? 0
 
         tunStack = config.tun?.stack?.trimmedNonEmpty ?? tunStack

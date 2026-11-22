@@ -65,6 +65,9 @@ struct MenuBarRootView: TranslatingView {
     @State var topHeaderHeight: CGFloat = 0
     @State var modeAndTabSectionHeight: CGFloat = 0
     @State var footerBarHeight: CGFloat = 0
+    /// Height of the visible measured tab. Cleared on a switch and repopulated by the
+    /// next measurement: reusing a cached value would publish a stale height first and
+    /// then correct it, which is the two-step resize that reads as the window jumping.
     @State var currentTabContentHeight: CGFloat = 0
     @AppStorage("clashbar.proxy.group.hide_hidden") var hideHiddenProxyGroups: Bool = true
     @AppStorage("clashbar.proxy.group.sort_nodes_by_latency") var sortGroupNodesByLatency: Bool =

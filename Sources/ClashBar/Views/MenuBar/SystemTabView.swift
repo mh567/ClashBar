@@ -463,12 +463,6 @@ struct SystemTabView: TranslatingView {
         VStack(alignment: .leading, spacing: T.space6) {
             self.coreSettingsActions
 
-            // Log level is the most frequently changed field, so it sits above the
-            // groups with no section header of its own.
-            ForEach(self.appViewModel.ungroupedConfigOverrideFieldStates) { state in
-                self.coreFieldRow(state)
-            }
-
             ForEach(ConfigOverrideGroup.allCases) { group in
                 self.coreGroupCard(group)
             }
@@ -561,6 +555,10 @@ struct SystemTabView: TranslatingView {
                 }
                 if !tun.isEmpty {
                     self.coreTunModeRow(tun)
+                }
+                // The exclusion list belongs to the same `tun:` block as its switch,
+                // so it lives inside the TUN card instead of the general one.
+                if group == .tun {
                     self.tunRouteExcludeRow
                 }
             }
@@ -676,13 +674,12 @@ struct SystemTabView: TranslatingView {
         switch state.field {
         case .allowLan, .ipv6, .tcpConcurrent:
             self.coreToggleFieldRow(state)
-        case .port, .socksPort, .mixedPort, .redirPort, .tproxyPort:
+        case .port, .socksPort, .mixedPort:
             self.corePortFieldRow(state)
         case .logLevel:
             self.coreLogLevelRow(state)
         case .mode:
-            // The top bar owns mode switching; duplicating it here would offer two
-            // ways to change one value.
+            // Not grouped, so no card ever asks for this row.
             EmptyView()
         case .tunEnable, .tunStack:
             // Rendered together by `coreTunModeRow`.
