@@ -6,7 +6,9 @@ extension MenuBarRootView {
     }
 
     private var hasResolvedCurrentTabLayout: Bool {
-        self.hasMeasuredFixedSections && self.currentTabContentHeight > 0
+        guard self.hasMeasuredFixedSections else { return false }
+        guard PanelHeightPolicy.measuresOwnHeight(self.rootViewModel.currentTab) else { return true }
+        return self.currentTabContentHeight > 0
     }
 
     private var fixedSectionHeight: CGFloat {
@@ -21,24 +23,29 @@ extension MenuBarRootView {
         max(0, popoverLayoutModel.maxPanelHeight - self.fixedSectionHeight)
     }
 
+    /// Measured tabs report their own height; list tabs ask for a row budget.
+    /// `PanelHeightPolicy` owns the screen clamp, so this value is used as-is.
+    private var requestedTabScrollAreaHeight: CGFloat {
+        PanelHeightPolicy.requestedHeight(
+            for: self.rootViewModel.currentTab,
+            measuredHeight: self.currentTabContentHeight,
+            usableHeight: self.availableTabScrollAreaHeight)
+    }
+
     var tabScrollAreaHeight: CGFloat {
         guard self.hasResolvedCurrentTabLayout else { return self.fallbackTabScrollAreaHeight }
-        return min(max(1, self.currentTabContentHeight), self.availableTabScrollAreaHeight)
+        return self.requestedTabScrollAreaHeight
     }
 
     var resolvedPanelHeight: CGFloat {
         guard self.hasResolvedCurrentTabLayout else { return popoverLayoutModel.resolvedPanelHeight }
-        return max(1, min(self.fixedSectionHeight + self.tabScrollAreaHeight, popoverLayoutModel.maxPanelHeight))
+        return self.fixedSectionHeight + self.tabScrollAreaHeight
     }
 
-    /// Tabs without a measured content height (rules, connections, logs) fill the
-    /// available space. Without this the panel keeps whatever height the previous
-    /// tab requested, so a list tab opened after a tall tab stays squashed.
+    /// Re-requests height after a tab switch. Lists have no measured height, so the
+    /// panel would otherwise keep whatever the previous tab asked for.
     func applyPanelHeightForCurrentTab() {
-        guard self.hasMeasuredFixedSections else { return }
-        guard !self.tabUsesDynamicHeight(self.rootViewModel.currentTab) else { return }
-
-        self.popoverLayoutModel.requestPanelHeight(self.popoverLayoutModel.maxPanelHeight)
+        self.publishPreferredPanelHeight()
     }
 
     enum SectionHeightTarget {
@@ -64,12 +71,16 @@ extension MenuBarRootView {
                 footerBarHeight = normalized
             }
         }
+
+        // The three sections report independently, so the value measured right now is
+        // passed through instead of being read back from state.
+        self.publishRowBudgetHeight(measuring: target, as: normalized)
     }
 
     func updateCurrentTabContentHeight(_ measured: CGFloat, for tab: RootTab) {
         guard tab == self.rootViewModel.currentTab else { return }
 
-        let normalized = max(1, measured)
+        let normalized = max(0, measured)
         guard abs(self.currentTabContentHeight - normalized) > 0.5 else { return }
 
         self.currentTabContentHeight = normalized
@@ -77,6 +88,29 @@ extension MenuBarRootView {
 
     func publishPreferredPanelHeight() {
         guard self.hasResolvedCurrentTabLayout else { return }
-        popoverLayoutModel.requestPanelHeight(max(1, self.resolvedPanelHeight.rounded(.up)))
+        popoverLayoutModel.requestPanelHeight(self.resolvedPanelHeight.rounded(.up))
+    }
+
+    /// A list tab's height follows from the fixed sections plus the policy's row
+    /// budget, so publish it as soon as the last fixed section is measured. Without
+    /// this the first expand of a list tab sits at `PopoverLayoutModel`'s default and
+    /// then jumps. `requestPanelHeight` ignores an unchanged value, so publishing on
+    /// every measurement cannot oscillate between two heights.
+    private func publishRowBudgetHeight(measuring target: SectionHeightTarget, as measured: CGFloat) {
+        guard !PanelHeightPolicy.measuresOwnHeight(self.rootViewModel.currentTab) else { return }
+
+        let header = target == .header ? measured : self.topHeaderHeight
+        let modeAndTab = target == .modeAndTab ? measured : self.modeAndTabSectionHeight
+        let footer = target == .footer ? measured : self.footerBarHeight
+        guard header > 0, modeAndTab > 0, footer > 0 else { return }
+
+        // A non-positive usable height means the fixed sections already fill the
+        // screen; the policy collapses that to its floor and the layout model caps it.
+        let fixed = header + modeAndTab + footer
+        let scrollAreaHeight = PanelHeightPolicy.requestedHeight(
+            for: self.rootViewModel.currentTab,
+            measuredHeight: 0,
+            usableHeight: popoverLayoutModel.maxPanelHeight - fixed)
+        popoverLayoutModel.requestPanelHeight((fixed + scrollAreaHeight).rounded(.up))
     }
 }

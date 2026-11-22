@@ -232,6 +232,9 @@ final class AppViewModel: ObservableObject {
     @Published var configOverrides = ConfigOverrides()
     @Published var coreSettingsEdits: [ConfigOverrideField: ConfigPatchValue] = [:]
     @Published var coreSettingsRestores: Set<String> = []
+    /// Mirrors `coreSettingsCommitTask`, which cannot publish on its own, so the
+    /// progress spinner observes the immediate-commit queue starting and draining.
+    @Published var isCommittingCoreSettingImmediately = false
     @Published var isApplyingCoreSettings = false
     @Published var coreSettingsError: String?
     @Published var systemProxyExceptionsError: String?
@@ -404,6 +407,9 @@ final class AppViewModel: ObservableObject {
     var lastSavedSystemProxyExceptions: [String] = []
     var pendingSystemProxyExceptionsSave: [String]?
     var systemProxyExceptionsSaveTask: Task<Void, Never>?
+    var coreSettingsImmediateEdits: [ConfigOverrideField: ConfigPatchValue] = [:]
+    var coreSettingsCommitTask: Task<Void, Never>?
+    var coreSettingsCommitGeneration: Int = 0
     var pendingTrafficPayload: Data?
     var pendingMihomoLogs: [AppErrorLogEntry] = []
     var modeSwitchInFlight = false

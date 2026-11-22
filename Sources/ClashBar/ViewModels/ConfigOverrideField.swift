@@ -62,6 +62,13 @@ enum ConfigSubmitGroup: Hashable {
             field.titleKey
         }
     }
+
+    /// A constrained group validates its fields against each other, so it keeps a
+    /// draft until the user applies. Every other group commits as soon as a field
+    /// changes.
+    var requiresExplicitApply: Bool {
+        self == .ports || self == .tun
+    }
 }
 
 enum ConfigOverrideField: String, CaseIterable, Identifiable {
@@ -79,7 +86,8 @@ enum ConfigOverrideField: String, CaseIterable, Identifiable {
     case mode
 
     /// Switching the mode from the top bar is a transient runtime choice, so it
-    /// must not pin the field. An explicit change from settings may still do so.
+    /// must not pin the field. The core settings page no longer offers a mode row,
+    /// so a top-bar switch is the only writer.
     static let transientKeys: Set<String> = ["mode"]
 
     static func isPersistableOnRuntimeChange(_ key: String) -> Bool {

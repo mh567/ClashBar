@@ -45,6 +45,7 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             let status = model.processManager.status
 
             model.stageCoreSetting(.logLevel, value: .string("debug"))
+            await model.awaitPendingCoreSettingCommits()
             model.stageCoreSetting(.mixedPort, value: .string("65536"))
             await model.applyCoreSettings()
             XCTAssertNotNil(model.coreSettingsError)
@@ -64,6 +65,7 @@ final class ConfigApplicationIntegrationTests: XCTestCase {
             XCTAssertEqual(model.processManager.status, status)
 
             model.stageCoreSetting(.logLevel, value: .string("error"))
+            await model.awaitPendingCoreSettingCommits()
             model.stageCoreSetting(.mixedPort, value: .string(String(occupied)))
             await model.applyCoreSettings()
             let failure = try XCTUnwrap(model.coreSettingsError)

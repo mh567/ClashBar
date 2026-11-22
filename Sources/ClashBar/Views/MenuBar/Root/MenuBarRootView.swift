@@ -198,13 +198,10 @@ struct MenuBarRootView: TranslatingView {
         }
     }
 
+    /// Reads the single tab classification in `PanelHeightPolicy`; there is no
+    /// second switch to keep in sync.
     func tabUsesDynamicHeight(_ tab: RootTab) -> Bool {
-        switch tab {
-        case .proxy, .system:
-            true
-        case .rules, .connections, .logs:
-            false
-        }
+        PanelHeightPolicy.measuresOwnHeight(tab)
     }
 
     @ViewBuilder

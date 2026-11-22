@@ -2,8 +2,21 @@ import Foundation
 
 @MainActor
 extension AppViewModel {
+    /// Counts what Apply will actually submit. A constrained draft always waits for
+    /// Apply; an unconstrained one only does so while a staged restore owns the
+    /// batch, and then `applyCoreSettings` sends every draft it can find.
     var pendingCoreSettingsCount: Int {
-        self.coreSettingsEdits.count + self.coreSettingsRestores.count
+        guard self.coreSettingsRestores.isEmpty else {
+            return self.coreSettingsEdits.count + self.coreSettingsRestores.count
+        }
+        return self.coreSettingsEdits.keys.filter { $0.submitGroup.requiresExplicitApply }.count
+    }
+
+    /// Waits for queued immediate commits to drain.
+    func awaitPendingCoreSettingCommits() async {
+        while let task = self.coreSettingsCommitTask {
+            await task.value
+        }
     }
 
     var canApplyCoreSettings: Bool {
@@ -25,13 +38,59 @@ extension AppViewModel {
             let parsed = ProxyPortsDraft.parsedPort(text)
             self.coreSettingsEdits[field] = parsed != nil && parsed == ProxyPortsDraft.parsedPort(current)
                 ? nil : value
-        } else if field == .mode, !self.isRemoteTarget {
-            let alreadyPinned = ConfigOverrides.matches(value, self.activeConfigOverrides[field.rawValue])
-            self.coreSettingsEdits[field] = alreadyPinned && ConfigOverrides.matches(value, runtime) ? nil : value
         } else {
             self.coreSettingsEdits[field] = ConfigOverrides.matches(value, runtime) ? nil : value
         }
         self.coreSettingsError = nil
+        // A staged restore reloads the file and reapplies every override at once, so
+        // it must own the whole batch; committing a field now would be undone by it.
+        if !field.submitGroup.requiresExplicitApply, self.coreSettingsRestores.isEmpty {
+            self.commitCoreSettingImmediately(field)
+        }
+    }
+
+    /// Unconstrained fields commit as soon as they change. Consecutive edits queue
+    /// behind one task so a slider-like sequence never overlaps its own patches.
+    func commitCoreSettingImmediately(_ field: ConfigOverrideField) {
+        guard let value = self.coreSettingsEdits[field] else { return }
+        self.coreSettingsImmediateEdits[field] = value
+        guard self.coreSettingsCommitTask == nil else { return }
+        self.coreSettingsCommitGeneration += 1
+        let generation = self.coreSettingsCommitGeneration
+        self.isCommittingCoreSettingImmediately = true
+        self.coreSettingsCommitTask = Task { [weak self] in
+            defer { self?.finishCoreSettingCommits(generation: generation) }
+            while !Task.isCancelled, let self, let field = self.coreSettingsImmediateEdits.keys.first,
+                  let pending = self.coreSettingsImmediateEdits[field]
+            {
+                if self.isConfigMutationBusy || self.isApplyingCoreSettings {
+                    guard (try? await Task.sleep(for: .milliseconds(50))) != nil else { return }
+                    continue
+                }
+                self.coreSettingsImmediateEdits.removeValue(forKey: field)
+                let applied = await self.patchConfigBody(
+                    [field.rawValue: pending], syncingKey: self.tr(field.titleKey))
+                if applied, self.coreSettingsEdits[field] == pending {
+                    self.coreSettingsEdits.removeValue(forKey: field)
+                } else if !applied {
+                    // The core page only renders `coreSettingsError`, so a failed
+                    // immediate commit must surface there instead of the App section.
+                    if !Task.isCancelled {
+                        self.coreSettingsError = self.settingsErrorMessage
+                            ?? self.tr("app.config.apply.unverified")
+                    }
+                    self.settingsErrorMessage = nil
+                }
+            }
+        }
+    }
+
+    /// A cancelled queue may have been replaced by a newer one, so only the queue
+    /// that owns the current generation clears the published flag.
+    private func finishCoreSettingCommits(generation: Int) {
+        guard self.coreSettingsCommitGeneration == generation else { return }
+        self.coreSettingsCommitTask = nil
+        self.isCommittingCoreSettingImmediately = false
     }
 
     func stageCoreSettingsRestore(_ keys: Set<String>) {
@@ -46,9 +105,20 @@ extension AppViewModel {
         guard !self.isApplyingCoreSettings else { return }
         self.coreSettingsRestores.remove(field.rawValue)
         self.coreSettingsError = nil
+        // Edits staged while a restore was pending were never committed, and the last
+        // undo hides the Apply button, so hand them to the immediate-commit queue.
+        guard self.coreSettingsRestores.isEmpty else { return }
+        for draft in Array(self.coreSettingsEdits.keys) where !draft.submitGroup.requiresExplicitApply {
+            self.commitCoreSettingImmediately(draft)
+        }
     }
 
     func discardCoreSettings() {
+        self.coreSettingsCommitTask?.cancel()
+        self.coreSettingsCommitTask = nil
+        self.coreSettingsCommitGeneration += 1
+        self.isCommittingCoreSettingImmediately = false
+        self.coreSettingsImmediateEdits = [:]
         self.coreSettingsEdits = [:]
         self.coreSettingsRestores = []
         self.coreSettingsError = nil

@@ -1,3 +1,31 @@
+## v1.1.14
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.14-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 日志级别与网络开关改完即生效，列表页高度按各自内容收敛，内核设置状态改用说清动作与对象的措辞。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **状态措辞可读**：内核设置的来源状态改为未覆写、已覆写、待提交、未确认、待读取，直接说明值从哪来、当前卡在哪一步。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **常用字段即时生效**：日志级别、允许局域网、IPv6、TCP 并发改完直接提交，不再需要点「应用更改」；代理端口与 TUN 仍保留草稿一起提交。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **列表页高度收敛**：分流、连接、日志按各自的行高与行数计算高度，并按屏幕可用高度钳制，大屏上不再铺满整屏。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **内核设置列对齐**：设置项左侧标签、右侧控件贴边，状态紧跟名称，不再被固定宽度的状态列挤到中间。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **运行模式去重**：内核设置不再重复提供运行模式，统一由顶部模式栏切换。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **即时提交失败无提示**：日志级别等字段提交失败时现在会在内核设置页显示原因，草稿保留可重试。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **草稿滞留**：撤销待读取后，先前因它而未提交的改动会自动补交，不再出现「有草稿却无处提交」。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **待提交计数**：按钮上的数量与实际会提交的字段一致，不再少算。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **首次展开跳动**：打开列表页时面板高度一次到位，不再先显示默认高度再跳变。
+
+---
+
 ## v1.1.13
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.13-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

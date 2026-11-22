@@ -196,26 +196,77 @@ final class ConfigOverridesTests: XCTestCase {
     func testCoreSettingsDraftSurvivesPanelCloseAndDiscardKeepsLiveValues() {
         let model = self.makeIsolatedModel()
         model.setPanelVisibility(true)
-        model.stageCoreSetting(.allowLan, value: .bool(true))
         model.stageCoreSetting(.mixedPort, value: .string("7891"))
         model.setPanelVisibility(false)
 
-        XCTAssertEqual(model.pendingCoreSettingsCount, 2)
-        XCTAssertEqual(model.coreSettingValue(.allowLan), .bool(true))
-        XCTAssertFalse(model.settingsAllowLan)
-        XCTAssertEqual(model.settingsMixedPort, "7890")
-        XCTAssertTrue(model.configOverrides.values.isEmpty)
-
-        model.stageCoreSetting(.allowLan, value: .bool(false))
         XCTAssertEqual(model.pendingCoreSettingsCount, 1)
+        XCTAssertEqual(model.settingsMixedPort, "7890")
+
         model.stageCoreSetting(.mixedPort, value: .string(" 07890 "))
         XCTAssertEqual(model.pendingCoreSettingsCount, 0)
         XCTAssertEqual(model.coreSettingValue(.mixedPort), .string("7890"))
 
-        model.stageCoreSetting(.mode, value: .string(model.currentMode.rawValue))
-        XCTAssertEqual(model.pendingCoreSettingsCount, 1)
+        model.stageCoreSetting(.mode, value: .string("global"))
+        XCTAssertEqual(model.pendingCoreSettingsCount, 0, "an unconstrained field must not wait for Apply")
+        XCTAssertEqual(model.coreSettingValue(.mode), .string("global"))
         model.discardCoreSettings()
         XCTAssertEqual(model.pendingCoreSettingsCount, 0)
+    }
+
+    @MainActor
+    func testOnlyConstrainedGroupsWaitForExplicitApply() {
+        XCTAssertTrue(ConfigSubmitGroup.ports.requiresExplicitApply)
+        XCTAssertTrue(ConfigSubmitGroup.tun.requiresExplicitApply)
+        for group in ConfigSubmitGroup.ordered where group != .ports && group != .tun {
+            XCTAssertFalse(group.requiresExplicitApply, "\(group) must commit on change")
+        }
+    }
+
+    @MainActor
+    func testFailedImmediateCommitSurfacesOnCorePageAndKeepsTheDraft() async throws {
+        let model = self.makeIsolatedModel()
+        model.stageCoreSetting(.logLevel, value: .string("debug"))
+        XCTAssertTrue(model.isCommittingCoreSettingImmediately, "the queue must publish while it runs")
+
+        // No running core, so the patch cannot land: the failure must reach the
+        // field the core page renders and must not leak into the App section.
+        await model.awaitPendingCoreSettingCommits()
+
+        XCTAssertFalse(model.isCommittingCoreSettingImmediately)
+        let error = try XCTUnwrap(model.coreSettingsError)
+        XCTAssertFalse(error.isEmpty)
+        XCTAssertNil(model.settingsErrorMessage)
+        XCTAssertEqual(model.coreSettingsEdits[.logLevel], .string("debug"), "the draft must stay retryable")
+    }
+
+    @MainActor
+    func testUndoingTheLastRestoreCommitsStrandedUnconstrainedDrafts() async {
+        let model = self.makeIsolatedModel()
+        model.coreSettingsRestores = ["log-level"]
+        model.coreSettingsEdits[.ipv6] = .bool(true)
+        model.coreSettingsEdits[.mixedPort] = .string("7891")
+
+        model.undoCoreSettingRestore(.logLevel)
+
+        XCTAssertTrue(model.coreSettingsRestores.isEmpty)
+        XCTAssertTrue(model.isCommittingCoreSettingImmediately, "the stranded draft must be requeued")
+        XCTAssertEqual(model.coreSettingsImmediateEdits[.ipv6], .bool(true))
+        XCTAssertNil(model.coreSettingsImmediateEdits[.mixedPort], "constrained drafts still wait for Apply")
+        await model.awaitPendingCoreSettingCommits()
+        XCTAssertFalse(model.isCommittingCoreSettingImmediately)
+    }
+
+    @MainActor
+    func testPendingCountMatchesWhatApplySubmitsInBothModes() {
+        let model = self.makeIsolatedModel()
+        model.coreSettingsEdits[.ipv6] = .bool(true)
+        XCTAssertEqual(model.pendingCoreSettingsCount, 0, "an unconstrained draft never waits for Apply alone")
+
+        model.coreSettingsEdits[.mixedPort] = .string("7891")
+        XCTAssertEqual(model.pendingCoreSettingsCount, 1)
+
+        model.coreSettingsRestores = ["log-level"]
+        XCTAssertEqual(model.pendingCoreSettingsCount, 3, "a staged restore makes Apply send every draft")
     }
 
     func testSubmitGroupsBindConstrainedFieldsAndIsolateTheRest() {
@@ -277,19 +328,16 @@ final class ConfigOverridesTests: XCTestCase {
         let keys = ConfigOverrideField.allCases.flatMap {
             [$0.titleKey, "ui.state.on", "ui.state.off"]
         } + ConfigOverrideGroup.allCases.map(\.titleKey) + [
-            "ui.settings.overrides.hint",
             "ui.settings.overrides.status.overridden_short",
             "ui.settings.overrides.status.unconfirmed_short",
             "ui.settings.overrides.status.following_short",
             "ui.settings.overrides.status.chip_named",
+            "ui.settings.overrides.status.chip_named_with_declared",
             "ui.settings.overrides.item.restore_help_with_declared",
             "ui.settings.overrides.restore_all",
-            "ui.settings.core.apply",
+            "ui.settings.core.apply_count",
             "ui.settings.core.discard",
-            "ui.settings.core.pending",
-            "ui.settings.core.applying",
             "ui.settings.core.applied",
-            "ui.settings.core.reload_hint",
             "ui.settings.core.restore_all_help",
             "ui.settings.core.restore_pending",
             "ui.settings.core.edit_pending",
@@ -304,7 +352,6 @@ final class ConfigOverridesTests: XCTestCase {
             "ui.settings.overrides.item.restore_help",
             "ui.settings.section.app",
             "ui.settings.section.core",
-            "ui.settings.core_remote_hint",
             "ui.settings.route_exclude.title",
             "ui.settings.route_exclude.source.yaml",
             "ui.settings.route_exclude.source.core",

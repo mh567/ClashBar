@@ -85,6 +85,7 @@ struct SystemTabView: TranslatingView {
         controlWidth: CGFloat? = nil,
         popoverWidth: CGFloat? = nil,
         popoverMaxHeight: CGFloat? = nil,
+        @ViewBuilder accessory: @escaping () -> some View = { EmptyView() },
         @ViewBuilder options: @escaping (_ dismiss: @escaping () -> Void) -> some View) -> some View
     {
         let resolvedControlWidth = controlWidth ?? self.settingsMenuControlWidth
@@ -93,10 +94,11 @@ struct SystemTabView: TranslatingView {
             width: popoverWidth ?? resolvedControlWidth,
             maxHeight: popoverMaxHeight)
         { _ in
-            HStack(spacing: T.space8) {
+            HStack(spacing: T.space4) {
                 self.settingsRowLabel(symbol: symbol, title: title)
                     .layoutPriority(1)
-                Spacer(minLength: 0)
+                accessory()
+                Spacer(minLength: T.space4)
                 HStack(spacing: T.space2) {
                     Text(valueText)
                         .foregroundStyle(nativeSecondaryLabel)
@@ -476,23 +478,19 @@ struct SystemTabView: TranslatingView {
     var coreSettingsActions: some View {
         let count = self.appViewModel.pendingCoreSettingsCount
         let applying = self.appViewModel.isApplyingCoreSettings
+        let committing = self.appViewModel.isCommittingCoreSettingImmediately
         let restoring = !self.appViewModel.coreSettingsRestores.isEmpty
+        let hasOverrides = self.appViewModel.configOverrideCount > 0
+        let showsRow = applying || committing || count > 0 || hasOverrides
+            || self.appViewModel.coreSettingsError != nil || restoring
 
         return VStack(alignment: .leading, spacing: T.space6) {
-            if applying {
-                HStack(spacing: T.space6) {
+            if applying || committing {
+                HStack(spacing: 0) {
                     ProgressView().controlSize(.small)
-                    Text(self.tr("ui.settings.core.applying"))
+                    Spacer(minLength: 0)
                 }
-            } else if count > 0 {
-                Text(self.tr("ui.settings.core.pending", count))
-                    .fontWeight(.semibold)
             }
-            Text(self.tr(restoring
-                ? "ui.settings.core.reload_hint"
-                : self.appViewModel.isRemoteTarget ? "ui.settings.core_remote_hint" : "ui.settings.overrides.hint"))
-                .foregroundStyle(nativeSecondaryLabel)
-                .fixedSize(horizontal: false, vertical: true)
 
             if let error = self.appViewModel.coreSettingsError {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
@@ -503,43 +501,49 @@ struct SystemTabView: TranslatingView {
                     .foregroundStyle(nativePositive)
             }
 
-            HStack(spacing: T.space4) {
-                if self.appViewModel.configOverrideCount > 0 {
-                    Button {
-                        self.appViewModel.stageCoreSettingsRestore(Set(self.appViewModel.activeConfigOverrides.keys))
-                    } label: {
-                        Text(self.tr("ui.settings.overrides.restore_all"))
-                            .frame(minHeight: T.compactRowHeight)
-                            .padding(.horizontal, T.space6)
+            if showsRow {
+                HStack(spacing: T.space4) {
+                    if hasOverrides {
+                        Button {
+                            self.appViewModel.stageCoreSettingsRestore(
+                                Set(self.appViewModel.activeConfigOverrides.keys))
+                        } label: {
+                            Text(self.tr("ui.settings.overrides.restore_all"))
+                                .frame(minHeight: T.compactRowHeight)
+                                .padding(.horizontal, T.space6)
+                        }
+                        .buttonStyle(MenuBarInteractionStyle())
+                        .background(self.nativeControlSurface())
+                        .disabled(!self.appViewModel.canRestoreConfigField
+                            || self.appViewModel.coreSettingsRestores.count == self.appViewModel.configOverrideCount)
+                        .help(self.tr("ui.settings.core.restore_all_help"))
                     }
-                    .buttonStyle(MenuBarInteractionStyle())
-                    .background(self.nativeControlSurface())
-                    .disabled(!self.appViewModel.canRestoreConfigField
-                        || self.appViewModel.coreSettingsRestores.count == self.appViewModel.configOverrideCount)
-                    .help(self.tr("ui.settings.core.restore_all_help"))
-                }
-                Spacer(minLength: 0)
-                if count > 0 {
-                    Button(self.tr("ui.settings.core.discard")) {
-                        self.appViewModel.discardCoreSettings()
+                    Spacer(minLength: 0)
+                    if count > 0 {
+                        Button(self.tr("ui.settings.core.discard")) {
+                            self.appViewModel.discardCoreSettings()
+                        }
+                        .appBorderedButtonStyle()
+                        .disabled(applying)
+
+                        Button(self.tr("ui.settings.core.apply_count", count)) {
+                            Task { await self.appViewModel.applyCoreSettings() }
+                        }
+                        .appBorderedButtonStyle(prominent: true)
+                        .disabled(!self.appViewModel.canApplyCoreSettings
+                            || (restoring && !self.appViewModel.canRestoreConfigField))
                     }
-                    .appBorderedButtonStyle()
-                    .disabled(applying)
                 }
-                Button(self.tr("ui.settings.core.apply")) {
-                    Task { await self.appViewModel.applyCoreSettings() }
-                }
-                .appBorderedButtonStyle(prominent: true)
-                .disabled(count == 0 || !self.appViewModel.canApplyCoreSettings
-                    || (restoring && !self.appViewModel.canRestoreConfigField))
+                .controlSize(.small)
             }
-            .controlSize(.small)
         }
         .font(.app(size: T.FontSize.caption, weight: .regular))
-        .menuRowPadding(vertical: T.space6)
+        .menuRowPadding(vertical: showsRow ? T.space6 : T.space2)
         .background {
-            RoundedRectangle(cornerRadius: T.cornerRadius, style: .continuous)
-                .fill(self.nativeBadgeFill)
+            if showsRow {
+                RoundedRectangle(cornerRadius: T.cornerRadius, style: .continuous)
+                    .fill(self.nativeBadgeFill)
+            }
         }
     }
 
@@ -563,19 +567,29 @@ struct SystemTabView: TranslatingView {
         }
     }
 
-    /// TUN 开关与协议栈合并为一行：协议栈胶囊在左，开关在右。
-    /// 两个控件各自带悬停反馈，整行不再叠加一层背景。
+    /// Label and status chips share the row with a control cluster that is wider
+    /// than any other row's, so the label scales down instead of claiming its full
+    /// width and starving the chips. Chips stay unnamed here: two "TUN 模式 …" style
+    /// labels would not fit next to the stack chips, so the field name lives in the
+    /// chip's help instead.
     func coreTunModeRow(_ states: [ConfigOverrideFieldState]) -> some View {
         let toggle = states.first { $0.field == .tunEnable }
         let hasStack = states.contains { $0.field == .tunStack }
         let enabled = self.appViewModel.coreSettingValue(.tunEnable) == .bool(true)
         let stack = self.coreSettingText(.tunStack)
+        let pending = states.filter { $0.isOverridden || self.appViewModel.coreSettingsEdits[$0.field] != nil }
 
-        return VStack(spacing: 0) {
-            HStack(spacing: T.space6) {
+        return HStack(spacing: T.space6) {
+            HStack(spacing: T.space4) {
                 self.settingsRowLabel(symbol: "shield.lefthalf.filled", title: self.tr("ui.quick.tun_mode"))
-                    .layoutPriority(1)
-                Spacer(minLength: 0)
+                    .minimumScaleFactor(T.minimumScale)
+                ForEach(pending) { state in
+                    self.coreFieldStatus(state)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            HStack(spacing: T.space4) {
                 if hasStack {
                     TunStackChipsView(
                         isTunEnabled: enabled,
@@ -597,28 +611,9 @@ struct SystemTabView: TranslatingView {
                         .accessibilityLabel(self.tr(toggle.field.titleKey))
                 }
             }
-            .menuRowPadding(vertical: T.space4)
-
-            self.coreFieldOverrideChips(states)
+            .fixedSize(horizontal: true, vertical: false)
         }
-    }
-
-    /// Shows one restore chip per overridden field in a merged row, so both the
-    /// TUN toggle and its stack stay individually recoverable. The chip text names
-    /// the field, otherwise two identical "已覆盖" chips would be indistinguishable.
-    @ViewBuilder
-    func coreFieldOverrideChips(_ states: [ConfigOverrideFieldState]) -> some View {
-        let overridden = states.filter { $0.isOverridden || self.appViewModel.coreSettingsEdits[$0.field] != nil }
-        if !overridden.isEmpty {
-            HStack(spacing: T.space4) {
-                Spacer(minLength: 0)
-                ForEach(overridden) { state in
-                    self.coreFieldStatus(state, showsFieldName: true)
-                }
-            }
-            .menuRowPadding(vertical: 0)
-            .padding(.bottom, T.space4)
-        }
+        .menuRowPadding(vertical: T.space4)
     }
 
     static let settingsRowTextInset: CGFloat = Self.settingsRowIconWidth + T.space6
@@ -686,52 +681,43 @@ struct SystemTabView: TranslatingView {
         case .logLevel:
             self.coreLogLevelRow(state)
         case .mode:
-            self.coreModeRow(state)
+            // The top bar owns mode switching; duplicating it here would offer two
+            // ways to change one value.
+            EmptyView()
         case .tunEnable, .tunStack:
             // Rendered together by `coreTunModeRow`.
             EmptyView()
         }
     }
 
-    func coreModeRow(_ state: ConfigOverrideFieldState) -> some View {
-        let current = self.appViewModel.coreSettingValue(.mode)
-        return self.coreMenuRow(state, valueText: self.coreSettingText(.mode))
-        { dismiss in
-            ForEach(Self.modeOptions, id: \.self) { mode in
-                AttachedPopoverMenuItem(
-                    title: ConfigOverrideField.modeText(mode.rawValue, language: self.language),
-                    selected: current == .string(mode.rawValue))
-                {
-                    self.appViewModel.stageCoreSetting(.mode, value: .string(mode.rawValue))
-                    dismiss()
-                }
-            }
-        }
-    }
-
-    static let modeOptions: [CoreMode] = [.rule, .global, .direct]
-
     func coreToggleFieldRow(_ state: ConfigOverrideFieldState) -> some View {
-        HStack(spacing: 0) {
-            Toggle(isOn: Binding(
+        HStack(spacing: T.space6) {
+            HStack(spacing: T.space4) {
+                self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
+                    .layoutPriority(1)
+                self.coreFieldStatus(state)
+            }
+            Spacer(minLength: 0)
+            Toggle("", isOn: Binding(
                 get: { self.appViewModel.coreSettingValue(state.field) == .bool(true) },
                 set: { self.appViewModel.stageCoreSetting(state.field, value: .bool($0)) }))
-            {
-                self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
-            }
-            .toggleStyle(MenuBarRowToggleStyle(verticalPadding: T.space4))
-            .accessibilityLabel(self.tr(state.field.titleKey))
-            .disabled(self.coreFieldDisabled)
-
-            self.coreFieldStatus(state)
-                .padding(.trailing, T.space8)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .accessibilityLabel(self.tr(state.field.titleKey))
+                .disabled(self.coreFieldDisabled)
         }
+        .menuRowPadding(vertical: T.space4)
+        .menuBarHover()
     }
 
     func corePortFieldRow(_ state: ConfigOverrideFieldState) -> some View {
         HStack(spacing: T.space6) {
-            self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
-                .layoutPriority(1)
+            HStack(spacing: T.space4) {
+                self.settingsRowLabel(symbol: state.field.symbol, title: self.tr(state.field.titleKey))
+                    .layoutPriority(1)
+                self.coreFieldStatus(state)
+            }
             Spacer(minLength: 0)
             TextField(self.tr("ui.placeholder.port"), text: Binding(
                 get: {
@@ -743,10 +729,9 @@ struct SystemTabView: TranslatingView {
                 .font(.app(size: T.FontSize.body, weight: .regular))
                 .foregroundStyle(nativePrimaryLabel)
                 .multilineTextAlignment(.trailing)
-                .frame(width: self.settingsPortFieldWidth, alignment: .trailing)
+                .frame(width: self.settingsMenuControlWidth, alignment: .trailing)
                 .accessibilityLabel(self.tr(state.field.titleKey))
                 .disabled(self.coreFieldDisabled)
-            self.coreFieldStatus(state)
         }
         .menuRowPadding(vertical: T.space4)
         .menuBarHover()
@@ -771,23 +756,17 @@ struct SystemTabView: TranslatingView {
         _ state: ConfigOverrideFieldState, valueText: String,
         @ViewBuilder options: @escaping (_ dismiss: @escaping () -> Void) -> some View
     ) -> some View {
-        HStack(spacing: T.space6) {
-            self.settingsMenuRow(
-                self.tr(state.field.titleKey), symbol: state.field.symbol, valueText: valueText,
-                options: options)
-                .disabled(self.coreFieldDisabled)
-            self.coreFieldStatus(state)
-                .padding(.trailing, T.space8)
-        }
+        self.settingsMenuRow(
+            self.tr(state.field.titleKey), symbol: state.field.symbol, valueText: valueText,
+            controlWidth: self.settingsMenuControlWidth,
+            accessory: { self.coreFieldStatus(state) },
+            options: options)
+            .disabled(self.coreFieldDisabled)
     }
 
     func coreSettingText(_ field: ConfigOverrideField) -> String {
         field.valueText(self.appViewModel.coreSettingValue(field), language: self.language) ?? ""
     }
-
-    /// Fixed width so every row's control lands on the same vertical line, whether
-    /// or not the field is overridden.
-    static let coreStatusColumnWidth: CGFloat = 74
 
     @ViewBuilder
     func coreFieldStatus(
@@ -824,9 +803,22 @@ struct SystemTabView: TranslatingView {
                     .foregroundStyle(self.appViewModel.coreSettingsEdits[state.field] == nil
                         ? self.nativeTertiaryLabel : self.nativeAccent)
                     .lineLimit(1)
+                    .help(self.coreStatusDetail(state))
+                    .accessibilityLabel(self.coreStatusDetail(state))
             }
         }
-        .frame(width: showsFieldName ? nil : Self.coreStatusColumnWidth, alignment: .trailing)
+    }
+
+    /// Names the field and the state, for when the chip itself is too narrow to carry
+    /// both (the TUN row) and for screen readers.
+    func coreStatusDetail(_ state: ConfigOverrideFieldState) -> String {
+        state.showsDifference
+            ? self.tr(
+                "ui.settings.overrides.status.chip_named_with_declared",
+                self.tr(state.field.titleKey),
+                self.coreStatusChipText(state, showsFieldName: false),
+                state.declaredText ?? "")
+            : self.coreStatusChipText(state, showsFieldName: true)
     }
 
     func coreStatusChipText(_ state: ConfigOverrideFieldState, showsFieldName: Bool) -> String {
@@ -1001,14 +993,12 @@ struct SystemTabView: TranslatingView {
         }
     }
 
+    /// Menu rows place their control flush right, so this is a width limit rather
+    /// than a fixed column: the label keeps the remaining space and the control
+    /// never reaches the middle of the row.
     var settingsMenuControlWidth: CGFloat {
         let contentWidth = T.panelWidth - (T.space8 * 2)
-        return min(152, max(118, contentWidth * 0.43))
-    }
-
-    var settingsPortFieldWidth: CGFloat {
-        let contentWidth = T.panelWidth - (T.space8 * 2)
-        return min(108, max(92, contentWidth * 0.30))
+        return min(120, max(88, contentWidth * 0.34))
     }
 
     var maintenanceActionEnabled: Bool {

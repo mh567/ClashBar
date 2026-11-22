@@ -365,6 +365,10 @@ extension AppViewModel {
         self.autoStartTask = nil
         self.systemProxyExceptionsSaveTask?.cancel()
         self.pendingSystemProxyExceptionsSave = nil
+        self.coreSettingsCommitTask?.cancel()
+        self.coreSettingsCommitTask = nil
+        self.coreSettingsImmediateEdits = [:]
+        self.isCommittingCoreSettingImmediately = false
         self.settingsFeedbackClearTask?.cancel()
         self.settingsFeedbackClearTask = nil
         self.coreUpgradeFeedbackClearTask?.cancel()
