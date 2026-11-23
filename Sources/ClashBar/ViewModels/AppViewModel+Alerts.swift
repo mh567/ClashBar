@@ -1,13 +1,23 @@
 import AppKit
 
+enum CoreFailurePresentation: Equatable {
+    case modal
+    case banner
+    case none
+}
+
 @MainActor
 extension AppViewModel {
+    private static var modalAlertWindowLevel: NSWindow.Level {
+        NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+    }
+
     func prepareModalWindowPresentation() {
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func configureModalWindow(_ window: NSWindow) {
-        window.level = .statusBar
+        window.level = Self.modalAlertWindowLevel
         window.collectionBehavior.insert(.moveToActiveSpace)
     }
 
@@ -29,7 +39,47 @@ extension AppViewModel {
         configure?(alert)
         self.prepareModalWindowPresentation()
         self.configureModalWindow(alert.window)
+
+        let watchdog = DispatchWorkItem { [weak self, weak alert] in
+            guard let self else { return }
+            self.appendLog(level: NetworkLogSeverity.error.rawValue, message: self.tr("log.alert.modal_timeout"))
+            alert?.window.orderOut(nil)
+            NSApplication.shared.abortModal()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 120, execute: watchdog)
+        defer { watchdog.cancel() }
         return alert.runModal()
+    }
+
+    func presentBackgroundBanner(_ banner: StatusItemBanner) {
+        self.statusItemBanner = banner
+    }
+
+    func presentNetworkBanner(_ kind: NetworkBannerKind) {
+        switch kind {
+        case .corePausedByNetworkLoss:
+            self.presentBackgroundBanner(StatusItemBanner(
+                symbolName: "wifi.slash",
+                title: self.tr("ui.banner.network.core_paused.title"),
+                primaryDetail: self.tr("ui.banner.network.core_paused.detail"),
+                secondaryDetail: nil))
+        case .coreResumedAfterNetworkRecovery:
+            self.presentBackgroundBanner(StatusItemBanner(
+                symbolName: "wifi",
+                title: self.tr("ui.banner.network.core_resumed.title"),
+                primaryDetail: self.tr("ui.banner.network.core_resumed.detail"),
+                secondaryDetail: nil))
+        case let .coreAutoStartFailed(message, quietRetryInterval):
+            self.presentBackgroundBanner(StatusItemBanner(
+                symbolName: "exclamationmark.triangle.fill",
+                title: self.tr("ui.banner.network.core_start_failed.title"),
+                primaryDetail: message.isEmpty
+                    ? self.tr("ui.banner.network.core_start_failed.detail")
+                    : message,
+                secondaryDetail: self.tr(
+                    "ui.banner.network.core_gave_up.detail",
+                    String(Int(quietRetryInterval)))))
+        }
     }
 }
 
@@ -131,7 +181,8 @@ extension AppViewModel {
         title: String,
         message: String,
         dedupeKey: String,
-        style: NSAlert.Style = .warning)
+        style: NSAlert.Style = .warning,
+        presentation: CoreFailurePresentation = .modal)
     {
         let now = Date()
         if self.lastCoreFailureAlertKey == dedupeKey,
@@ -144,11 +195,22 @@ extension AppViewModel {
         self.lastCoreFailureAlertKey = dedupeKey
         self.lastCoreFailureAlertAt = now
 
-        self.runModalAlert(
-            style: style,
-            message: title,
-            informative: message,
-            buttons: [tr("ui.action.ok")])
+        switch presentation {
+        case .modal:
+            self.runModalAlert(
+                style: style,
+                message: title,
+                informative: message,
+                buttons: [tr("ui.action.ok")])
+        case .banner:
+            self.presentBackgroundBanner(StatusItemBanner(
+                symbolName: "exclamationmark.triangle.fill",
+                title: title,
+                primaryDetail: message,
+                secondaryDetail: nil))
+        case .none:
+            break
+        }
     }
 
     func presentConfigValidationFailedAlert(fileName: String, details: String) {

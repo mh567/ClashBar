@@ -15,6 +15,7 @@ private struct SettingsSelectionRowConfiguration<Option: Hashable> {
 
 enum SettingsSection: String, CaseIterable, Identifiable {
     case app
+    case network
     case core
 
     var id: String {
@@ -25,6 +26,8 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         switch self {
         case .app:
             "ui.settings.section.app"
+        case .network:
+            "ui.settings.section.network"
         case .core:
             "ui.settings.section.core"
         }
@@ -189,9 +192,12 @@ struct SystemTabView: TranslatingView {
         VStack(alignment: .leading, spacing: T.space6) {
             self.settingsSectionControl
 
-            if self.section == .app {
+            switch self.section {
+            case .app:
                 self.appSettingsSection
-            } else {
+            case .network:
+                self.networkSettingsSection
+            case .core:
                 self.coreSettingsSection
             }
         }
@@ -212,6 +218,29 @@ struct SystemTabView: TranslatingView {
                     color: feedback.color,
                     symbol: feedback.symbol)
                     .allowsHitTesting(false)
+            }
+        }
+    }
+
+    // MARK: - Network settings
+
+    var networkSettingsSection: some View {
+        VStack(alignment: .leading, spacing: T.space6) {
+            VStack(spacing: 0) {
+                self.settingsCardHeader(self.tr("ui.section.network"))
+                self.settingsToggleRow(
+                    self.tr("ui.settings.network.auto_stop_core"),
+                    symbol: "wifi.slash",
+                    isOn: self.$appViewModel.autoStopCoreOnNetworkLoss)
+                self.settingsToggleRow(
+                    self.tr("ui.settings.network.auto_start_core"),
+                    symbol: "wifi",
+                    isOn: self.$appViewModel.autoStartCoreOnNetworkRecovery)
+                Text(self.tr("ui.settings.network.hint"))
+                    .font(.app(size: T.FontSize.caption, weight: .regular))
+                    .foregroundStyle(nativeSecondaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .menuRowPadding(vertical: T.space4)
             }
         }
     }

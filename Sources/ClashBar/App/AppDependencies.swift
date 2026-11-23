@@ -8,7 +8,7 @@ struct AppDependencies {
     let tunPermissionService: TunPermissionService
     let launchAtLoginService: AppLaunchService
     let workingDirectoryManager: WorkingDirectoryManager
-    let networkReachabilityMonitor: NetworkReachabilityMonitor
+    let networkReachabilityMonitor: any NetworkReachabilityMonitoring
     let ssidMonitorService: SSIDMonitorService
     let remoteMachineStore: RemoteMachineStore
     let proxyGroupIconCache: ProxyGroupIconCache

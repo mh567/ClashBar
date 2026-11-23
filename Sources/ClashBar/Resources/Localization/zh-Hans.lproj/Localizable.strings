@@ -357,8 +357,7 @@
 "log.start.no_config" = "未选择配置文件";
 "log.start.failed" = "启动内核失败: %@";
 "log.restart.failed" = "重启内核失败: %@";
-"log.network.offline_auto_stop" = "检测到网络断开，已停止内核；网络恢复后将自动启动。";
-"log.network.online_auto_start" = "检测到网络恢复，正在自动启动内核。";
+"log.network.suppressed" = "网络路径变化由 TUN 或内核切换触发，已忽略。";
 "log.ssid_strategy.monitor_failed" = "SSID 监听失败: %@";
 "log.ssid_strategy.authorization_required" = "SSID 策略需要定位权限，当前无法根据 Wi-Fi 自动切换配置。";
 "log.ssid_strategy.enable_auto_switch_first" = "请先开启 Wi-Fi 自动切换，再进行当前 Wi-Fi 绑定。";
@@ -463,6 +462,7 @@
 
 "app.config.apply.unverified" = "无法核实配置是否生效。";
 "app.config.apply.stale" = "操作期间所选配置已变更。";
+"app.config.apply.cancelled" = "操作已取消。";
 "app.config.apply.previous_restored" = "新配置应用失败，已恢复上次加载的版本。";
 "app.config.apply.recovery_failed" = "新配置应用失败，且未能恢复上次加载的版本。%@";
 "app.config.apply.restore_failed" = "恢复跟随配置失败：%@";
@@ -510,3 +510,26 @@
 "ui.quick.remote.validating" = "正在校验配置…";
 "ui.quick.remote.partially_applied" = "配置部分生效";
 "ui.quick.remote.apply_failed" = "配置更新失败";
+"ui.settings.section.network" = "网络";
+"ui.section.network" = "网络策略";
+"ui.settings.network.auto_stop_core" = "断网时自动停止内核";
+"ui.settings.network.auto_start_core" = "网络恢复后自动启动内核";
+"ui.settings.network.hint" = "短时抖动不会触发内核重启；长期断网会暂停内核，恢复后自动拉起并还原 TUN 与系统代理。";
+"log.network.offline_debounce" = "网络已断开，确认 %@ 秒后暂停内核。";
+"log.network.online_debounce" = "网络已恢复，确认 %@ 秒后自动启动内核。";
+"log.network.auto_start_retry" = "自动启动内核失败（第 %@ 次），%@ 秒后重试：%@";
+"log.network.auto_start_gave_up" = "自动启动内核连续失败，改为每 %@ 秒静默重试。";
+"log.network.user_start_offline" = "离线状态下手动启动内核，本次离线期间不再自动停止。";
+"log.start.cancelled" = "内核启动已取消（内部调度），未视为失败。";
+"log.restart.cancelled" = "内核重启已取消（内部调度），未视为失败。";
+"log.alert.modal_timeout" = "模态提示长时间未响应，已自动关闭以避免界面卡死。";
+"ui.banner.network.core_paused.title" = "网络已断开";
+"ui.banner.network.core_paused.detail" = "内核已暂停，网络恢复后自动启动";
+"ui.banner.network.core_resumed.title" = "网络已恢复";
+"ui.banner.network.core_resumed.detail" = "内核已重新启动";
+"ui.banner.network.core_start_failed.title" = "自动启动内核失败";
+"ui.banner.network.core_start_failed.detail" = "将在后台继续重试";
+"ui.banner.network.core_gave_up.detail" = "已改为每 %@ 秒静默重试";
+"ui.banner.core.terminated.title" = "内核意外退出";
+"ui.banner.tun_restore_failed.title" = "TUN 恢复失败";
+"ui.banner.tun_restore_failed.detail" = "请稍后在代理页手动开启 TUN";

@@ -1,3 +1,32 @@
+## v1.1.22
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.22-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 重做网络断连与恢复策略，修复断网抖动导致内核停摆、界面被不可见模态弹窗卡死的问题。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **网络设置**：设置页新增「网络」分段，可分别开关断网自动停止内核、网络恢复后自动启动内核，默认都开启。
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **网络状态机**：断网与恢复引入去抖和过渡抑制窗口，短时抖动不再反复停启内核。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **恢复流程**：长期断网后恢复时自动拉起内核并还原 TUN 与系统代理，启动失败按退避重试，连续失败后转为静默重试。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **用户意图优先**：手动停核后网络恢复不会自动启动，离线时手动启动的内核不会被立即停掉。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **提示方式**：后台自动停核、启动失败和内核意外退出改用状态栏气泡，不再弹阻塞式模态框。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **界面卡死无法退出**：模态提示窗口与菜单栏面板层级冲突时，窗口会变为不可见并永久阻塞主线程。现在提示窗口层级更高，并增加超时自动关闭兜底。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **内部取消被当成失败**：网络切换取消内核启动时会误报失败并弹窗，现在取消只记日志，不再提示或进入重试。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **TUN 开关误判网络**：切换 TUN 引起的路径变化会被误判为断网，现在在抑制窗口内忽略。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **停核期间的 TUN 调用**：断网停核不再通过 API 关闭 TUN，避免网络中断时特权请求超时拖慢停核。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **内核意外退出后被静默拉起**：意外退出只提示不自动重启，等待用户手动启动。
+
+---
+
 ## v1.1.21
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.21-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

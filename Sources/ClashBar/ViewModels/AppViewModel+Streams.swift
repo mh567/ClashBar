@@ -30,7 +30,7 @@ extension AppViewModel {
     func configureStreamCoordinator() {
         streamCoordinator.shouldReconnect = { [weak self] in
             guard let self else { return false }
-            if self.networkReachabilityStatus == .offline {
+            if self.settledReachabilityStatus == .offline {
                 return false
             }
             return self.isRemoteTarget || self.processManager.isRunning

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 @MainActor
@@ -20,14 +21,15 @@ extension AppViewModel {
                     self?.statusText = "Failed"
                     self?.apiStatus = .failed
                     self?.resetTrafficPresentation()
-                    self?.appendLog(level: "error", message: message)
+                    self?.appendLog(level: NetworkLogSeverity.error.rawValue, message: message)
                     self?.cancelPolling()
+                    self?.networkDriver?.coreCrashed()
                     if self?.coreActionState == .idle, let self, !message.isEmpty {
-                        self.presentCoreFailureAlert(
-                            title: self.tr("app.core.alert.process_terminated.title"),
-                            message: message,
-                            dedupeKey: "core-process-terminated",
-                            style: .critical)
+                        self.presentBackgroundBanner(StatusItemBanner(
+                            symbolName: "exclamationmark.triangle.fill",
+                            title: self.tr("ui.banner.core.terminated.title"),
+                            primaryDetail: message,
+                            secondaryDetail: nil))
                     }
                 }
             }
@@ -58,7 +60,21 @@ extension AppViewModel {
         guard !self.didStart else { return }
         self.didStart = true
         self.bootstrapDirectoriesAndLogs()
+        self.registerWorkspaceWakeObserver()
         self.performDeferredInitialization()
+    }
+
+    private func registerWorkspaceWakeObserver() {
+        guard self.workspaceWakeObserver == nil else { return }
+        self.workspaceWakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main)
+        { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleSystemDidWake()
+            }
+        }
     }
 
     private func performDeferredInitialization() {
@@ -110,16 +126,23 @@ extension AppViewModel {
         }
 
         self.startConfigDirectoryMonitoringIfNeeded()
+        self.updateNetworkReachabilityMonitoringState()
         if self.autoStartCore {
             if !self.shouldDeferAutoStartForMissingManagedCore() {
                 self.autoStartTask = Task { [weak self] in
-                    await self?.attemptAutoStartIfNeeded()
+                    guard let self else { return }
+                    for _ in 0..<10 where self.networkReachabilityMonitor.currentStatus == .unknown {
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                    guard Self.shouldAttemptAutoStart(
+                        reachability: self.networkReachabilityMonitor.currentStatus)
+                    else { return }
+                    await self.attemptAutoStartIfNeeded()
                 }
             }
         }
 
         self.refreshSSIDStrategyState(requestAuthorizationIfNeeded: self.ssidStrategyEnabled)
-        self.updateNetworkReachabilityMonitoringState()
         self.refreshMenuBarDisplaySnapshotIfNeeded()
     }
 }
@@ -145,6 +168,12 @@ extension AppViewModel {
 
     func shouldDeferAutoStartForMissingManagedCore() -> Bool {
         !bundlesMihomoCore && !self.hasInstalledManagedMihomoCore()
+    }
+
+    nonisolated static func shouldAttemptAutoStart(
+        reachability: NetworkReachabilityStatus) -> Bool
+    {
+        reachability != .offline
     }
 
     func coreErrorMessage(_ error: Error) -> String {

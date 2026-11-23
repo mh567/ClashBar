@@ -50,6 +50,7 @@ extension AppViewModel {
         case .unverified: self.tr("app.config.apply.unverified")
         case let .recoveryFailed(failure): self.tr("app.config.apply.recovery_failed", failure)
         case .stale: self.tr("app.config.apply.stale")
+        case .cancelled: self.tr("app.config.apply.cancelled")
         case let .restoreFailed(failure): self.tr("app.config.apply.restore_failed", failure)
         case .systemProxyRequiresPort: self.tr("ui.settings.core.system_proxy_requires_port")
         case let .fields(fields): self.tr("app.config.apply.partial", fields.joined(separator: ", "))

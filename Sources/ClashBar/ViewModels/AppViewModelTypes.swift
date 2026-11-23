@@ -44,17 +44,37 @@ enum StartTrigger {
     case auto
     case networkRecovery
 
-    var shouldPresentFailureModal: Bool {
+    var isUserInitiated: Bool {
+        self == .manual
+    }
+
+    var reportsNetworkCoreStart: Bool {
+        self != .networkRecovery
+    }
+
+    var failurePresentation: CoreFailurePresentation {
         switch self {
-        case .auto: false
-        case .manual, .networkRecovery: true
+        case .manual: .modal
+        case .auto, .networkRecovery: .none
         }
+    }
+
+    var shouldPresentFailureModal: Bool {
+        self.failurePresentation == .modal
     }
 }
 
 enum StopTrigger {
     case manual
     case networkLoss
+
+    var isUserInitiated: Bool {
+        self == .manual
+    }
+
+    var reportsNetworkCoreStop: Bool {
+        self != .networkLoss
+    }
 }
 
 enum CoreActionState {

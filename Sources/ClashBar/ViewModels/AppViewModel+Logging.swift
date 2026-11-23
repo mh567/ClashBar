@@ -25,6 +25,36 @@ extension AppViewModel {
         self.appendLog(source: .mihomo, level: level, message: message)
     }
 
+    func logNetworkEvent(_ event: NetworkLogEvent) {
+        switch event {
+        case let .offlineConfirmed(seconds):
+            self.appendLog(
+                level: NetworkLogSeverity.info.rawValue,
+                message: self.tr("log.network.offline_debounce", String(Int(seconds))))
+        case let .onlineConfirmed(seconds):
+            self.appendLog(
+                level: NetworkLogSeverity.info.rawValue,
+                message: self.tr("log.network.online_debounce", String(Int(seconds))))
+        case let .autoStartRetry(attempt, delay, message):
+            self.appendLog(
+                level: NetworkLogSeverity.error.rawValue,
+                message: self.tr(
+                    "log.network.auto_start_retry", String(attempt), String(Int(delay)), message))
+        case let .autoStartGaveUp(interval):
+            self.appendLog(
+                level: NetworkLogSeverity.error.rawValue,
+                message: self.tr("log.network.auto_start_gave_up", String(Int(interval))))
+        case .userStartWhileOffline:
+            self.appendLog(
+                level: NetworkLogSeverity.warning.rawValue,
+                message: self.tr("log.network.user_start_offline"))
+        case .suppressedTransition:
+            self.appendLog(
+                level: NetworkLogSeverity.info.rawValue,
+                message: self.tr("log.network.suppressed"))
+        }
+    }
+
     func appendLog(source: AppLogSource, level: String, message: String) {
         guard !message.isEmpty else { return }
 

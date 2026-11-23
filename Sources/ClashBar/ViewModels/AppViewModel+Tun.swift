@@ -16,6 +16,7 @@ extension AppViewModel {
     func toggleTunMode(_ enabled: Bool) async {
         guard !self.isConfigMutationBusy, !self.isApplyingCoreSettings else { return }
         let overrideID = self.activeConfigOverrideID
+        self.networkDriver?.ownTransitionBegan()
 
         let applied = await self.applyTunMode(enabled, requestPermissionsIfMissing: true)
         guard applied else { return }
@@ -54,11 +55,22 @@ extension AppViewModel {
             appendLog(
                 level: "info",
                 message: tr("log.tun.toggled", enabled ? tr("log.tun.enabled") : tr("log.tun.disabled")))
+            self.lastTunFailureWasPermanent = false
             return true
         } catch {
+            self.lastTunFailureWasPermanent = Self.isPermanentTunFailure(error)
             appendLog(level: "error", message: tr("log.tun.toggle_failed", self.tunErrorMessage(error)))
             await self.refreshTunStatusFromRuntimeConfig()
             return false
+        }
+    }
+
+    static func isPermanentTunFailure(_ error: Error) -> Bool {
+        guard let error = error as? TunPermissionServiceError else { return false }
+        switch error {
+        case .coreBinaryNotFound, .coreBinaryNotExecutable, .permissionMissing,
+             .authorizationCancelled, .authorizationFailed, .permissionVerificationFailed:
+            return true
         }
     }
 
@@ -88,6 +100,7 @@ extension AppViewModel {
             return
         }
 
+        self.networkDriver?.ownTransitionBegan()
         self.isTunSyncing = true
         self.configReadEpoch = UUID()
         defer {

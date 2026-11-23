@@ -376,7 +376,7 @@ final class AppViewModel: ObservableObject {
     let tunPermissionService: TunPermissionService
     let launchAtLoginService: AppLaunchService
     let workingDirectoryManager: WorkingDirectoryManager
-    let networkReachabilityMonitor: NetworkReachabilityMonitor
+    let networkReachabilityMonitor: any NetworkReachabilityMonitoring
     let ssidMonitorService: SSIDMonitorService
     let remoteMachineStore: RemoteMachineStore
     let proxyGroupIconCache: ProxyGroupIconCache
@@ -387,8 +387,7 @@ final class AppViewModel: ObservableObject {
     let streamCoordinator = StreamCoordinator()
     var settingsFeedbackClearTask: Task<Void, Never>?
     var providerRefreshTask: Task<Void, Never>?
-    var networkAutoStopTask: Task<Void, Never>?
-    var networkAutoStartTask: Task<Void, Never>?
+    var networkDriver: NetworkCoreDriver?
     var coreUpgradeFeedbackClearTask: Task<Void, Never>?
     var geoUpdateFeedbackClearTask: Task<Void, Never>?
     var configDirectoryMonitor: ConfigDirectoryMonitor?
@@ -418,6 +417,8 @@ final class AppViewModel: ObservableObject {
 
     let defaults: UserDefaults
     @AppStorage("clashbar.auto.start.core") var autoStartCore: Bool = false
+    @AppStorage("clashbar.network.auto.stop.core") var autoStopCoreOnNetworkLoss: Bool = true
+    @AppStorage("clashbar.network.auto.start.core") var autoStartCoreOnNetworkRecovery: Bool = true
     @AppStorage("clashbar.ssid.strategy.enabled") var ssidStrategyEnabledStorage: Bool = false
     @AppStorage("clashbar.statusbar.display.mode") private var statusBarDisplayModeRaw: String = StatusBarDisplayMode
         .iconOnly.rawValue
@@ -474,9 +475,13 @@ final class AppViewModel: ObservableObject {
     @Published var configApplicationLoaded = false
     @Published var pendingConfigFileNames: Set<String> = []
     let coreFailureAlertThrottleInterval: TimeInterval = 20
-    var networkReachabilityStatus: NetworkReachabilityStatus = .unknown
-    var shouldResumeCoreAfterNetworkRecovery = false
+    var settledReachabilityStatus: NetworkReachabilityStatus = .unknown
     var isNetworkReachabilityMonitoring = false
+    var deferredCoreIntent: CoreDesiredState?
+    var workspaceWakeObserver: NSObjectProtocol?
+    var lastTunFailureWasPermanent = false
+    var lastCoreStartWasCancelled = false
+    var didPresentTunRestoreFailureBanner = false
     var isSSIDStrategyMonitoring = false
     var pendingCoreFeatureRecoveryState: CoreFeatureRecoveryState?
     var remoteConfigSubscriptions: [String: RemoteConfigSubscription] = [:]

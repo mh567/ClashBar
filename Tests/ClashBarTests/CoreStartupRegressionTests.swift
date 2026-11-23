@@ -35,7 +35,7 @@ final class CoreStartupRegressionTests: XCTestCase {
     func testAutomaticCoreStartFailureDoesNotPresentAModalAlert() {
         XCTAssertFalse(StartTrigger.auto.shouldPresentFailureModal)
         XCTAssertTrue(StartTrigger.manual.shouldPresentFailureModal)
-        XCTAssertTrue(StartTrigger.networkRecovery.shouldPresentFailureModal)
+        XCTAssertFalse(StartTrigger.networkRecovery.shouldPresentFailureModal)
     }
 
     private static func makeListener() throws -> (socket: Int32, port: Int) {

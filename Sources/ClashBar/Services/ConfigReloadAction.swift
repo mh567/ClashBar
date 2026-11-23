@@ -4,6 +4,7 @@ import Yams
 enum ConfigApplicationError: Error {
     case unverified
     case stale
+    case cancelled
     case recoveryFailed(String)
     case restoreFailed(String)
     case systemProxyRequiresPort

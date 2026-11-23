@@ -18,15 +18,22 @@ extension AppViewModel {
 
     func startCore(trigger: StartTrigger = .manual) async {
         guard !self.isRemoteTarget else { return }
-        guard !self.isConfigMutationBusy else { return }
-        if trigger == .manual {
-            shouldResumeCoreAfterNetworkRecovery = false
+        self.lastCoreStartWasCancelled = false
+        guard !self.isConfigMutationBusy else {
+            if trigger.isUserInitiated {
+                self.deferredCoreIntent = .running
+            }
+            return
         }
         self.coreActionState = .starting
         self.configReadEpoch = UUID()
+        if trigger.isUserInitiated {
+            self.networkDriver?.userRequestedStart()
+        }
         defer {
             self.configReadEpoch = UUID()
             self.coreActionState = .idle
+            self.flushDeferredCoreIntentIfNeeded()
         }
         do {
             guard let configPath = await self.resolveSelectedConfigPath() else {
@@ -40,7 +47,18 @@ extension AppViewModel {
                     refreshSystemProxyBeforeOverlay: true,
                     refreshSystemProxyAfterBootstrap: false,
                     autoTestGroupLatencies: true))
+            if trigger.reportsNetworkCoreStart, self.isRuntimeRunning {
+                self.networkDriver?.coreDidStart()
+            }
         } catch {
+            if Self.isCancellationLike(error) {
+                self.lastCoreStartWasCancelled = true
+                self.logCoreCancellation("log.start.cancelled")
+                if trigger.reportsNetworkCoreStart, self.isRuntimeRunning {
+                    self.networkDriver?.coreDidStart()
+                }
+                return
+            }
             self.configApplicationFailure = self.configApplicationErrorMessage(error)
             let message = tr("log.start.failed", self.configApplicationFailure ?? "")
             self.reportCoreStartFailure(message: message, trigger: trigger, markFailedOnManual: true)
@@ -48,14 +66,15 @@ extension AppViewModel {
     }
 
     private func reportCoreStartFailure(message: String, trigger: StartTrigger, markFailedOnManual: Bool) {
-        self.appendLog(level: "error", message: message)
-        if trigger.shouldPresentFailureModal {
+        self.appendLog(level: NetworkLogSeverity.error.rawValue, message: message)
+        if trigger.failurePresentation != .none {
             self.presentCoreFailureAlert(
                 title: self.tr("app.core.alert.start_failed.title"),
                 message: message,
-                dedupeKey: "core-start-failed")
+                dedupeKey: "core-start-failed",
+                presentation: trigger.failurePresentation)
         }
-        if trigger == .auto {
+        if trigger == .auto || trigger == .networkRecovery {
             self.startupErrorMessage = message
             self.statusText = "Stopped"
             self.apiStatus = .unknown
@@ -67,21 +86,27 @@ extension AppViewModel {
 
     func stopCore(trigger: StopTrigger = .manual) async {
         guard !self.isRemoteTarget else { return }
-        guard !self.isConfigMutationBusy else { return }
-        if trigger == .manual {
-            shouldResumeCoreAfterNetworkRecovery = false
+        guard !self.isConfigMutationBusy else {
+            if trigger.isUserInitiated {
+                self.deferredCoreIntent = .stopped
+            }
+            return
         }
         let recoverySnapshotBeforeStop = self.currentCoreFeatureRecoverySnapshot()
         self.coreActionState = .stopping
         self.configReadEpoch = UUID()
+        if trigger.isUserInitiated {
+            self.networkDriver?.userRequestedStop()
+        }
         defer {
             self.configReadEpoch = UUID()
             self.coreActionState = .idle
+            self.flushDeferredCoreIntentIfNeeded()
         }
         await self.prepareCoreFeatureRecoveryBeforeCoreTransition(
             fallbackRecovery: recoverySnapshotBeforeStop,
             transitionKind: .stop,
-            disableRuntimeTunBeforeStop: trigger == .networkLoss)
+            disableRuntimeTunBeforeStop: false)
         cancelProviderRefresh(reason: "stop requested")
         await self.processManager.stop()
         self.clearLoadedConfigState()
@@ -90,25 +115,34 @@ extension AppViewModel {
         apiStatus = .unknown
         clearProxyPresentation()
         resetTrafficPresentation()
+        if trigger.reportsNetworkCoreStop {
+            self.networkDriver?.coreDidStop()
+        }
     }
 
     @discardableResult
     func restartCore(
-        trigger: ProviderRefreshTrigger = .restart, candidate: URL? = nil, commit: (() throws -> Void)? = nil
+        trigger: ProviderRefreshTrigger = .restart, candidate: URL? = nil, commit: (() throws -> Void)? = nil,
+        isUserInitiated: Bool = false
     ) async -> ConfigApplicationOutcome {
         guard !self.isRemoteTarget, !self.isConfigMutationBusy else { return .skipped }
+        if isUserInitiated {
+            self.networkDriver?.userRequestedStart()
+        }
+        self.networkDriver?.ownTransitionBegan()
         self.coreActionState = .restarting
         self.configReadEpoch = UUID()
         defer {
             self.configReadEpoch = UUID()
             self.coreActionState = .idle
+            self.flushDeferredCoreIntentIfNeeded()
         }
         self.cancelProviderRefresh(reason: "restart requested")
         do {
             guard let configPath = await self.resolveSelectedConfigPath() else {
                 throw CocoaError(.fileNoSuchFile)
             }
-            return try await self.launchSelectedConfig(
+            let outcome = try await self.launchSelectedConfig(
                 path: configPath, restarting: true, candidate: candidate, commit: commit,
                 options: CoreBootstrapOptions(
                     providerTrigger: trigger,
@@ -116,10 +150,21 @@ extension AppViewModel {
                     refreshSystemProxyBeforeOverlay: false,
                     refreshSystemProxyAfterBootstrap: true,
                     autoTestGroupLatencies: false))
+            if self.isRuntimeRunning {
+                self.networkDriver?.coreDidStart()
+            }
+            return outcome
         } catch {
+            if Self.isCancellationLike(error) {
+                self.logCoreCancellation("log.restart.cancelled")
+                if self.isRuntimeRunning {
+                    self.networkDriver?.coreDidStart()
+                }
+                return .failed
+            }
             self.configApplicationFailure = self.configApplicationErrorMessage(error)
             let message = self.tr("log.restart.failed", self.configApplicationFailure ?? "")
-            self.reportCoreRestartFailure(message: message)
+            self.reportCoreRestartFailure(message: message, isUserInitiated: isUserInitiated)
             return .failed
         }
     }
@@ -205,6 +250,9 @@ extension AppViewModel {
             await self.completeCoreBootstrap(configPath: path, options: options)
             return self.configApplicationOutcome
         } catch {
+            if Self.isCancellationLike(error) {
+                throw error
+            }
             let failure = self.configApplicationErrorMessage(error)
             guard recoveryPath != nil || recoveryData != nil else {
                 if (replacement != nil || staged != nil), self.processManager.isRunning {
@@ -268,6 +316,9 @@ extension AppViewModel {
                 at: selectedPath, yaml: yaml, status: status, controller: controller,
                 overrides: replacing ? [:] : overrides)
         } catch {
+            if Self.isCancellationLike(error) {
+                throw ConfigApplicationError.cancelled
+            }
             if self.processManager.status == status {
                 await self.processManager.stop()
             }
@@ -290,25 +341,58 @@ extension AppViewModel {
         throw ConfigApplicationError.stale
     }
 
-    private func reportCoreRestartFailure(message: String) {
+    private func reportCoreRestartFailure(message: String, isUserInitiated: Bool) {
         if !self.processManager.isRunning {
             self.statusText = "Failed"
             self.apiStatus = .failed
             self.cancelPolling()
         }
-        self.appendLog(level: "error", message: message)
+        self.appendLog(level: NetworkLogSeverity.error.rawValue, message: message)
         self.presentCoreFailureAlert(
             title: self.tr("app.core.alert.restart_failed.title"),
             message: message,
-            dedupeKey: "core-restart-failed")
+            dedupeKey: "core-restart-failed",
+            presentation: isUserInitiated ? .modal : .banner)
     }
 
     func performPrimaryCoreAction() async {
         guard !self.isConfigMutationBusy else { return }
         if isRuntimeRunning {
-            await self.restartCore()
+            await self.restartCore(isUserInitiated: true)
         } else {
             await self.startCore(trigger: .manual)
+        }
+    }
+
+    nonisolated static func isCancellationLike(_ error: Error) -> Bool {
+        if error is CancellationError {
+            return true
+        }
+        if let configError = error as? ConfigApplicationError, case .cancelled = configError {
+            return true
+        }
+        if let urlError = error as? URLError, urlError.code == .cancelled {
+            return true
+        }
+        return Task.isCancelled
+    }
+
+    private func logCoreCancellation(_ logKey: String) {
+        self.appendLog(level: NetworkLogSeverity.info.rawValue, message: self.tr(logKey))
+    }
+
+    func flushDeferredCoreIntentIfNeeded() {
+        guard let intent = self.deferredCoreIntent else { return }
+        guard !self.isConfigMutationBusy else { return }
+        self.deferredCoreIntent = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            switch intent {
+            case .running:
+                await self.startCore(trigger: .manual)
+            case .stopped:
+                await self.stopCore(trigger: .manual)
+            }
         }
     }
 
@@ -343,7 +427,11 @@ extension AppViewModel {
     }
 
     func cancelOwnedTasks() {
-        self.shouldResumeCoreAfterNetworkRecovery = false
+        self.deferredCoreIntent = nil
+        if let observer = self.workspaceWakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            self.workspaceWakeObserver = nil
+        }
         self.stopNetworkReachabilityMonitoring()
         self.stopConfigDirectoryMonitoring()
         self.cancelProviderRefresh(reason: "quit requested")
@@ -523,6 +611,7 @@ extension AppViewModel {
 
         let recovery = self.mergeCoreFeatureRecoveryStates(baseRecovery, self.pendingCoreFeatureRecoveryState)
         self.pendingCoreFeatureRecoveryState = recovery.shouldRecoverAnyFeature ? recovery : nil
+        self.didPresentTunRestoreFailureBanner = false
 
         if runtimeRunningBeforeTransition, recovery.tunEnabled {
             if transitionKind == .stop, disableRuntimeTunBeforeStop {
@@ -577,7 +666,7 @@ extension AppViewModel {
         }
         guard self.isRuntimeRunning else { return }
 
-        if self.networkReachabilityStatus == .offline {
+        if self.settledReachabilityStatus == .offline {
             return
         }
 
@@ -614,13 +703,29 @@ extension AppViewModel {
             }
         }
 
+        var remainingTunRecovery = false
         if self.shouldRecoverTunForSelectedConfig {
-            await self.applyTunMode(true, requestPermissionsIfMissing: false)
+            self.lastTunFailureWasPermanent = false
+            let applied = await self.applyTunMode(true, requestPermissionsIfMissing: false)
+            if applied {
+                self.didPresentTunRestoreFailureBanner = false
+            } else {
+                remainingTunRecovery = !self.lastTunFailureWasPermanent
+                if !self.didPresentTunRestoreFailureBanner {
+                    self.didPresentTunRestoreFailureBanner = true
+                    self.presentBackgroundBanner(StatusItemBanner(
+                        symbolName: "exclamationmark.triangle.fill",
+                        title: self.tr("ui.banner.tun_restore_failed.title"),
+                        primaryDetail: self.tr("ui.banner.tun_restore_failed.detail"),
+                        secondaryDetail: nil))
+                }
+            }
         }
 
         let remaining = CoreFeatureRecoveryState(
             systemProxyEnabled: remainingSystemProxyRecovery,
-            tunEnabled: false)
+            tunEnabled: remainingTunRecovery,
+            tunConfigID: recovery.tunConfigID)
         self.pendingCoreFeatureRecoveryState = remaining.shouldRecoverAnyFeature ? remaining : nil
     }
 }
