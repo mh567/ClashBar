@@ -157,16 +157,34 @@ final class NetworkCorePolicyTests: XCTestCase {
 
         let expectedDelays: [TimeInterval] = [2, 4, 8]
         for (index, delay) in expectedDelays.enumerated() {
-            let actions = policy.handle(.autoStartFailed(message: "boom"), now: self.at(Double(10 + index * 100)))
+            let actions = policy.handle(
+                .autoStartFailed(message: "boom", retryable: true),
+                now: self.at(Double(10 + index * 100)))
             XCTAssertEqual(self.retryDelay(actions) ?? -1, delay, accuracy: 0.01)
         }
 
-        let gaveUp = policy.handle(.autoStartFailed(message: "boom"), now: self.at(400))
+        let gaveUp = policy.handle(.autoStartFailed(message: "boom", retryable: true), now: self.at(400))
         XCTAssertTrue(gaveUp.contains(.presentBanner(
             .coreAutoStartFailed(message: "boom", quietRetryInterval: 60))))
 
-        let quiet = policy.handle(.autoStartFailed(message: "boom"), now: self.at(500))
+        let quiet = policy.handle(.autoStartFailed(message: "boom", retryable: true), now: self.at(500))
         XCTAssertEqual(self.retryDelay(quiet) ?? -1, 60, accuracy: 0.01)
+    }
+
+    func testDeterministicAutoStartFailureStopsRetrying() {
+        var policy = self.makePolicy(running: false)
+        _ = policy.handle(.reachabilityChanged(.online), now: self.at(0))
+        _ = policy.handle(.reevaluationFired, now: self.at(3))
+
+        let actions = policy.handle(
+            .autoStartFailed(message: "port busy", retryable: false),
+            now: self.at(10))
+
+        XCTAssertTrue(actions.contains(.presentBanner(.coreAutoStartBlocked(message: "port busy"))))
+        XCTAssertTrue(actions.contains(.log(.autoStartBlocked(message: "port busy"))))
+        XCTAssertNil(self.retryDelay(actions))
+        XCTAssertNil(policy.state.nextEligibleStartAt)
+        XCTAssertEqual(policy.state.retryAttempt, 0)
     }
 
     func testUserRequestedStopEmitsStopCoreWhenRunning() {

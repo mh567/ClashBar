@@ -349,6 +349,14 @@
 "app.core.alert.restart_failed.title" = "重启内核失败";
 "app.core.alert.process_terminated.title" = "内核异常退出";
 "app.core.error.binary_not_found" = "当前版本未内置 mihomo。请先将名为“mihomo”的可执行文件复制到以下目录，再重新启动 ClashBar Core：\n%@";
+"app.core.error.port_conflict" = "控制器 %@ 的端口 %d 已被进程 %d 占用（%@）。请结束该进程，或修改 external-controller 后重试。";
+"app.core.error.port_conflict_unowned" = "控制器 %@ 的端口 %d 已被占用，无法识别占用进程。请检查该端口，或修改 external-controller 后重试。";
+"app.core.error.stale_core_termination" = "无法结束上次残留的内核进程（PID %d）：%@";
+"app.core.error.helper_outdated_hint" = "特权助手已过时或未安装，请先重新安装后再试。";
+"app.core.error.unknown_process" = "未知进程";
+"app.core.error.config_invalid" = "无法读取配置：%@";
+"app.core.error.permission_denied" = "权限不足：%@";
+"app.core.error.launch_failed" = "无法启动内核：%@";
 "app.core.setup_required.title" = "安装 Mihomo 内核";
 "app.core.setup_required.message" = "当前版本不内置 mihomo。首次使用前，请将名为“mihomo”的可执行文件复制到以下目录：\n%@\n\nClashBar 之后会从该目录读取内核。";
 
@@ -519,6 +527,7 @@
 "log.network.online_debounce" = "网络已恢复，确认 %@ 秒后自动启动内核。";
 "log.network.auto_start_retry" = "自动启动内核失败（第 %@ 次），%@ 秒后重试：%@";
 "log.network.auto_start_gave_up" = "自动启动内核连续失败，改为每 %@ 秒静默重试。";
+"log.network.auto_start_blocked" = "自动启动内核已暂停，等待手动处理：%@";
 "log.network.user_start_offline" = "离线状态下手动启动内核，本次离线期间不再自动停止。";
 "log.start.cancelled" = "内核启动已取消（内部调度），未视为失败。";
 "log.restart.cancelled" = "内核重启已取消（内部调度），未视为失败。";
@@ -530,6 +539,8 @@
 "ui.banner.network.core_start_failed.title" = "自动启动内核失败";
 "ui.banner.network.core_start_failed.detail" = "将在后台继续重试";
 "ui.banner.network.core_gave_up.detail" = "已改为每 %@ 秒静默重试";
+"ui.banner.network.core_start_blocked.title" = "自动启动内核已暂停";
+"ui.banner.network.core_start_blocked.detail" = "请先处理上面的问题，再手动启动内核。";
 "ui.banner.core.terminated.title" = "内核意外退出";
 "ui.banner.tun_restore_failed.title" = "TUN 恢复失败";
 "ui.banner.tun_restore_failed.detail" = "请稍后在代理页手动开启 TUN";

@@ -25,7 +25,7 @@ extension AppViewModel: NetworkCoreDriverHost {
         }
         guard self.isRuntimeRunning else {
             let message = self.configApplicationFailure ?? self.startupErrorMessage ?? ""
-            return .failed(message: message)
+            return .failed(message: message, retryable: !self.lastCoreStartFailureDeterministic)
         }
         return .started
     }

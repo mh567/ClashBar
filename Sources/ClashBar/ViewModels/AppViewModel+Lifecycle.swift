@@ -19,6 +19,7 @@ extension AppViewModel {
     func startCore(trigger: StartTrigger = .manual) async {
         guard !self.isRemoteTarget else { return }
         self.lastCoreStartWasCancelled = false
+        self.lastCoreStartFailureDeterministic = false
         guard !self.isConfigMutationBusy else {
             if trigger.isUserInitiated {
                 self.deferredCoreIntent = .running
@@ -60,6 +61,7 @@ extension AppViewModel {
                 return
             }
             self.configApplicationFailure = self.configApplicationErrorMessage(error)
+            self.lastCoreStartFailureDeterministic = Self.isDeterministicCoreStartFailure(error)
             let message = tr("log.start.failed", self.configApplicationFailure ?? "")
             self.reportCoreStartFailure(message: message, trigger: trigger, markFailedOnManual: true)
         }
@@ -251,6 +253,12 @@ extension AppViewModel {
             return self.configApplicationOutcome
         } catch {
             if Self.isCancellationLike(error) {
+                throw error
+            }
+            if let coreError = error as? CoreStartError,
+               coreError.isDeterministic,
+               !coreError.allowsRecoveryByReloadingPreviousConfig
+            {
                 throw error
             }
             let failure = self.configApplicationErrorMessage(error)

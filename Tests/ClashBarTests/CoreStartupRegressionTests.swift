@@ -23,13 +23,17 @@ final class CoreStartupRegressionTests: XCTestCase {
         XCTAssertTrue(MihomoProcessManager.controllerPortHasListener("0.0.0.0:\(endpoint.port)"))
     }
 
-    func testControllerPortAvailabilityStillRejectsAnActiveListener() throws {
+    func testTypedPortConflictCarriesThePortNumber() throws {
         let endpoint = try Self.makeListener()
         defer { Darwin.close(endpoint.socket) }
 
-        XCTAssertThrowsError(try MihomoProcessManager.checkControllerPortAvailability("0.0.0.0:\(endpoint.port)")) {
-            XCTAssertEqual(($0 as? POSIXError)?.code, .EADDRINUSE)
+        let conflict = MihomoProcessManager.controllerPortConflict(
+            "127.0.0.1:\(endpoint.port)",
+            owner: nil)
+        guard case let .portConflict(_, port, _)? = conflict else {
+            return XCTFail("expected CoreStartError.portConflict, got \(String(describing: conflict))")
         }
+        XCTAssertEqual(port, endpoint.port)
     }
 
     func testAutomaticCoreStartFailureDoesNotPresentAModalAlert() {

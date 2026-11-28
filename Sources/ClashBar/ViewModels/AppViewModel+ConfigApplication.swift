@@ -46,7 +46,10 @@ extension AppViewModel {
     }
 
     func configApplicationErrorMessage(_ error: Error) -> String {
-        switch error as? ConfigApplicationError {
+        if let coreStartError = error as? CoreStartError {
+            return self.coreStartErrorMessage(coreStartError)
+        }
+        return switch error as? ConfigApplicationError {
         case .unverified: self.tr("app.config.apply.unverified")
         case let .recoveryFailed(failure): self.tr("app.config.apply.recovery_failed", failure)
         case .stale: self.tr("app.config.apply.stale")

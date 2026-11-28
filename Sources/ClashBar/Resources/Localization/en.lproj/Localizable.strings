@@ -345,6 +345,14 @@
 "app.core.alert.restart_failed.title" = "Core Restart Failed";
 "app.core.alert.process_terminated.title" = "Core Terminated Unexpectedly";
 "app.core.error.binary_not_found" = "No mihomo core was found. Copy an executable named \"mihomo\" to %@, then start ClashBar Core again.";
+"app.core.error.port_conflict" = "Controller %@ port %d is already in use by process %d (%@). Stop that process or change external-controller, then retry.";
+"app.core.error.port_conflict_unowned" = "Controller %@ port %d is already in use. Check the port or change external-controller, then retry.";
+"app.core.error.stale_core_termination" = "Could not stop the previously launched core process (pid %d): %@";
+"app.core.error.helper_outdated_hint" = "The privileged helper is outdated or missing; reinstall it before retrying.";
+"app.core.error.unknown_process" = "unknown process";
+"app.core.error.config_invalid" = "The configuration could not be read: %@";
+"app.core.error.permission_denied" = "Permission denied: %@";
+"app.core.error.launch_failed" = "Failed to launch the core: %@";
 "app.core.setup_required.title" = "Install Mihomo Core";
 "app.core.setup_required.message" = "This build does not bundle mihomo. Before first use, copy an executable named \"mihomo\" into:\n%@\n\nClashBar will load the core from that folder.";
 
@@ -519,6 +527,7 @@
 "log.network.online_debounce" = "Network is back. Starting the core after %@ seconds.";
 "log.network.auto_start_retry" = "Automatic core start failed (attempt %@). Retrying in %@ seconds: %@";
 "log.network.auto_start_gave_up" = "Automatic core start keeps failing. Switching to a quiet retry every %@ seconds.";
+"log.network.auto_start_blocked" = "Automatic core start paused until the issue is resolved: %@";
 "log.network.user_start_offline" = "Core started manually while offline. Automatic stop is suppressed for this outage.";
 "log.start.cancelled" = "Core start was cancelled by internal scheduling and is not treated as a failure.";
 "log.restart.cancelled" = "Core restart was cancelled by internal scheduling and is not treated as a failure.";
@@ -530,6 +539,8 @@
 "ui.banner.network.core_start_failed.title" = "Automatic core start failed";
 "ui.banner.network.core_start_failed.detail" = "Retrying in the background.";
 "ui.banner.network.core_gave_up.detail" = "Switched to a quiet retry every %@ seconds.";
+"ui.banner.network.core_start_blocked.title" = "Automatic core start paused";
+"ui.banner.network.core_start_blocked.detail" = "Resolve the issue above, then start the core manually.";
 "ui.banner.core.terminated.title" = "Core exited unexpectedly";
 "ui.banner.tun_restore_failed.title" = "TUN restore failed";
 "ui.banner.tun_restore_failed.detail" = "Enable TUN manually from the proxy tab.";

@@ -79,6 +79,14 @@ extension AppViewModel {
                 secondaryDetail: self.tr(
                     "ui.banner.network.core_gave_up.detail",
                     String(Int(quietRetryInterval)))))
+        case let .coreAutoStartBlocked(message):
+            self.presentBackgroundBanner(StatusItemBanner(
+                symbolName: "exclamationmark.triangle.fill",
+                title: self.tr("ui.banner.network.core_start_blocked.title"),
+                primaryDetail: message.isEmpty
+                    ? self.tr("ui.banner.network.core_start_blocked.detail")
+                    : message,
+                secondaryDetail: nil))
         }
     }
 }

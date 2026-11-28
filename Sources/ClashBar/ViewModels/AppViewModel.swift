@@ -481,6 +481,7 @@ final class AppViewModel: ObservableObject {
     var workspaceWakeObserver: NSObjectProtocol?
     var lastTunFailureWasPermanent = false
     var lastCoreStartWasCancelled = false
+    var lastCoreStartFailureDeterministic = false
     var didPresentTunRestoreFailureBanner = false
     var isSSIDStrategyMonitoring = false
     var pendingCoreFeatureRecoveryState: CoreFeatureRecoveryState?

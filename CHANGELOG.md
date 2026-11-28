@@ -1,3 +1,33 @@
+## v1.1.23
+
+![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.23-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)
+
+> 修复重启或异常退出后残留内核占用端口导致无法启动的问题，并让内核启动具备接管、清理和确定性失败处理。
+
+### 📝 更新日志 (Changelog)
+
+**✨ 新增功能 (New Features)**
+
+- ![Feature](https://img.shields.io/badge/Feature-10B981?style=flat-square) **内核接管**：应用异常退出后重新启动时，会先识别并接管自己留下的 mihomo，正在使用的连接不会中断。
+
+**🚀 优化改进 (Improvements)**
+
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **运行状态落盘**：记录内核 PID、启动时间、二进制路径、配置指纹和控制器地址，跨重启也能判断进程归属。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **启动前对账**：配置一致且核心能响应时直接接管，配置变化时才结束旧内核再启动。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **残留进程清理**：端口被自己托管的内核占用时，会校验进程身份后结束并等待端口释放；TUN 模式下的 root 进程通过特权助手处理。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **失败分类**：端口冲突、二进制缺失、配置不可读、权限不足等确定性失败不再盲目重试，提示一次后暂停自动启动。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **错误提示**：端口冲突会带上端口号、进程 PID 和可执行路径，并可通过特权助手识别不可见的 root 占用者。
+- ![Optimize](https://img.shields.io/badge/Optimize-3B82F6?style=flat-square) **接管前探测**：向控制器 `/version` 发起一次探测，避免把尚未就绪的内核误判为健康。
+
+**🐞 修复问题 (Bug Fixes)**
+
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **重启后内核无法启动**：残留的旧内核占用 9090 时新内核反复报 address already in use，现在会自动接管或清理。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **运行状态竞态**：内核快速退出时不再留下已失效的运行状态记录。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **误杀风险**：结束残留内核前校验 PID、启动时间和可执行路径，身份不匹配时拒绝操作。
+- ![Fix](https://img.shields.io/badge/Fix-EF4444?style=flat-square) **自动重试刷屏**：确定性失败停止定时重试，避免日志和状态栏提示反复出现。
+
+---
+
 ## v1.1.22
 
 ![macOS](https://img.shields.io/badge/macOS-Supported-000000?style=flat-square&logo=apple) ![Version](https://img.shields.io/badge/Release-v1.1.22-10B981?style=flat-square) ![Core](https://img.shields.io/badge/Core-Mihomo-6366f1?style=flat-square)

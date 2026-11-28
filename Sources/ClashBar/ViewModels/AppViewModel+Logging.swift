@@ -44,6 +44,10 @@ extension AppViewModel {
             self.appendLog(
                 level: NetworkLogSeverity.error.rawValue,
                 message: self.tr("log.network.auto_start_gave_up", String(Int(interval))))
+        case let .autoStartBlocked(message):
+            self.appendLog(
+                level: NetworkLogSeverity.error.rawValue,
+                message: self.tr("log.network.auto_start_blocked", message))
         case .userStartWhileOffline:
             self.appendLog(
                 level: NetworkLogSeverity.warning.rawValue,

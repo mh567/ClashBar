@@ -18,7 +18,7 @@ final class NetworkCoreDriver {
     enum Outcome: Equatable {
         case started
         case stopped
-        case failed(message: String)
+        case failed(message: String, retryable: Bool)
         case skipped
     }
 
@@ -82,8 +82,8 @@ final class NetworkCoreDriver {
         self.dispatch(.userRequestedStop)
     }
 
-    func autoStartFailed(message: String) {
-        self.dispatch(.autoStartFailed(message: message))
+    func autoStartFailed(message: String, retryable: Bool) {
+        self.dispatch(.autoStartFailed(message: message, retryable: retryable))
     }
 
     func systemDidWake() {
@@ -178,8 +178,8 @@ final class NetworkCoreDriver {
                 self.dispatch(.coreDidStart)
             case .stopped:
                 self.dispatch(.coreDidStop)
-            case let .failed(message):
-                self.dispatch(.autoStartFailed(message: message))
+            case let .failed(message, retryable):
+                self.dispatch(.autoStartFailed(message: message, retryable: retryable))
             case .skipped:
                 self.dispatch(.actionSkipped)
             }

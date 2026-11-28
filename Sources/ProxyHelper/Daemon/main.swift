@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import ProxyHelperShared
 import Security
@@ -500,6 +501,62 @@ private final class ProxyHelperService: NSObject, ProxyHelperProtocol {
         } catch {
             completion(false, error.localizedDescription)
         }
+    }
+
+    /// Terminates a stale mihomo instance that the app launched in TUN mode.
+    /// Such a process runs as root, so the unprivileged app cannot signal it.
+    /// The (pid, start time, executable path) triple guards against PID reuse.
+    func terminateProcess(
+        pid: Int32,
+        startTime: UInt64,
+        expectedExecutablePath: String,
+        gracePeriod: Double,
+        completion: @escaping (Int32, String?) -> Void)
+    {
+        guard pid > 1 else {
+            completion(ProxyHelperTerminationCode.invalidRequest.rawValue, "Invalid pid.")
+            return
+        }
+        guard let snapshot = CoreProcessIdentity.snapshot(pid: pid) else {
+            completion(ProxyHelperTerminationCode.success.rawValue, nil)
+            return
+        }
+        guard snapshot.startTime == startTime,
+              CoreProcessIdentity.normalizedPath(snapshot.executablePath)
+                  == CoreProcessIdentity.normalizedPath(expectedExecutablePath)
+        else {
+            completion(
+                ProxyHelperTerminationCode.identityMismatch.rawValue,
+                "Process \(pid) no longer matches the recorded mihomo instance.")
+            return
+        }
+
+        guard CoreProcessIdentity.terminate(pid: pid, gracePeriod: gracePeriod) else {
+            completion(
+                ProxyHelperTerminationCode.stillRunning.rawValue,
+                "Process \(pid) is still running after SIGKILL.")
+            return
+        }
+        completion(ProxyHelperTerminationCode.success.rawValue, nil)
+    }
+
+    func listenerOwner(
+        port: Int,
+        completion: @escaping (Bool, Int32, UInt64, String?, String?) -> Void)
+    {
+        guard (1...65_535).contains(port) else {
+            completion(false, 0, 0, nil, "Invalid port.")
+            return
+        }
+        guard let pid = CoreProcessIdentity.listeningPIDs(port: port).first else {
+            completion(false, 0, 0, nil, nil)
+            return
+        }
+        guard let snapshot = CoreProcessIdentity.snapshot(pid: pid) else {
+            completion(true, pid, 0, nil, nil)
+            return
+        }
+        completion(true, pid, snapshot.startTime, snapshot.executablePath, nil)
     }
 }
 

@@ -9,6 +9,7 @@ enum NetworkBannerKind: Equatable {
     case corePausedByNetworkLoss
     case coreResumedAfterNetworkRecovery
     case coreAutoStartFailed(message: String, quietRetryInterval: TimeInterval)
+    case coreAutoStartBlocked(message: String)
 }
 
 enum NetworkLogSeverity: String {
@@ -22,6 +23,7 @@ enum NetworkLogEvent: Equatable {
     case onlineConfirmed(seconds: TimeInterval)
     case autoStartRetry(attempt: Int, delay: TimeInterval, message: String)
     case autoStartGaveUp(interval: TimeInterval)
+    case autoStartBlocked(message: String)
     case userStartWhileOffline
     case suppressedTransition
 }
@@ -34,7 +36,7 @@ enum NetworkCoreEvent: Equatable {
     case coreCrashed
     case userRequestedStart
     case userRequestedStop
-    case autoStartFailed(message: String)
+    case autoStartFailed(message: String, retryable: Bool)
     case systemDidWake
     case ownTransitionBegan
     case actionSkipped
@@ -130,8 +132,8 @@ struct NetworkCorePolicy {
             guard self.state.isCoreRunning, !self.state.isActionInFlight else { return [] }
             self.state.isActionInFlight = true
             return [.stopCore]
-        case let .autoStartFailed(message):
-            return self.handleAutoStartFailure(message: message, now: now)
+        case let .autoStartFailed(message, retryable):
+            return self.handleAutoStartFailure(message: message, retryable: retryable, now: now)
         case .systemDidWake:
             self.state.suppressionUntil = now.addingTimeInterval(self.configuration.wakeSettle)
             return [.scheduleReevaluation(after: self.configuration.wakeSettle)]
@@ -272,9 +274,23 @@ struct NetworkCorePolicy {
         return actions
     }
 
-    private mutating func handleAutoStartFailure(message: String, now: Date) -> [NetworkCoreAction] {
+    private mutating func handleAutoStartFailure(
+        message: String,
+        retryable: Bool,
+        now: Date)
+        -> [NetworkCoreAction]
+    {
         self.state.isActionInFlight = false
         self.state.shouldAnnounceResume = false
+        guard retryable else {
+            self.state.retryAttempt = 0
+            self.state.nextEligibleStartAt = nil
+            return [
+                .presentBanner(.coreAutoStartBlocked(message: message)),
+                .log(.autoStartBlocked(message: message)),
+            ]
+        }
+
         self.state.retryAttempt += 1
         let attempt = self.state.retryAttempt
         let delay: TimeInterval

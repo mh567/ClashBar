@@ -176,6 +176,13 @@ extension AppViewModel {
         reachability != .offline
     }
 
+    nonisolated static func isDeterministicCoreStartFailure(_ error: Error) -> Bool {
+        if let coreError = error as? CoreStartError {
+            return coreError.isDeterministic
+        }
+        return error is MihomoBinaryResolutionError
+    }
+
     func coreErrorMessage(_ error: Error) -> String {
         if let binaryResolutionError = error as? MihomoBinaryResolutionError {
             switch binaryResolutionError {
@@ -183,7 +190,37 @@ extension AppViewModel {
                 return tr("app.core.error.binary_not_found", expectedDirectory)
             }
         }
+        if let coreStartError = error as? CoreStartError {
+            return self.coreStartErrorMessage(coreStartError)
+        }
 
         return error.localizedDescription
+    }
+
+    func coreStartErrorMessage(_ error: CoreStartError) -> String {
+        switch error {
+        case let .portConflict(controller, port, owner):
+            if let owner {
+                return tr(
+                    "app.core.error.port_conflict",
+                    controller,
+                    port,
+                    Int(owner.pid),
+                    owner.executablePath ?? tr("app.core.error.unknown_process"))
+            }
+            return tr("app.core.error.port_conflict_unowned", controller, port)
+        case let .staleCoreTerminationFailed(pid, reason, helperOutdated):
+            let message = tr("app.core.error.stale_core_termination", Int(pid), reason)
+            guard helperOutdated else { return message }
+            return message + " " + tr("app.core.error.helper_outdated_hint")
+        case let .binaryMissing(expectedDirectory):
+            return tr("app.core.error.binary_not_found", expectedDirectory)
+        case let .configInvalid(reason):
+            return tr("app.core.error.config_invalid", reason)
+        case let .permissionDenied(reason):
+            return tr("app.core.error.permission_denied", reason)
+        case let .launchFailed(reason):
+            return tr("app.core.error.launch_failed", reason)
+        }
     }
 }

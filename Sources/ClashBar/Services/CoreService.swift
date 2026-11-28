@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import ProxyHelperShared
 
 enum CoreLifecycleStatus: Equatable, Sendable {
     case stopped
@@ -88,6 +89,19 @@ enum MihomoConfigValidationError: LocalizedError {
     }
 }
 
+private final class HTTPProbeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var responded = false
+
+    func store(_ value: Bool) {
+        self.lock.withLock { self.responded = value }
+    }
+
+    func load() -> Bool {
+        self.lock.withLock { self.responded }
+    }
+}
+
 private final class LogFloodGate: @unchecked Sendable {
     private let maxLinesPerWindow = 200
     private let windowNanoseconds: UInt64 = 1_000_000_000
@@ -173,6 +187,7 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
         self.lock.withLock { self.storedStatus }
     }
     private var process: Process?
+    private var adoptedCore: CoreProcessInfo?
     private var stdoutHandle: FileHandle?
     private var stderrHandle: FileHandle?
     private var intentionalStop = false
@@ -183,6 +198,10 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
     private let validationQueue: DispatchQueue
     private let configValidationTimeout: TimeInterval
     private let resolutionLock = NSLock()
+    private let runtimeStateStore: CoreRuntimeStateStore
+    private let processInspector: any CoreProcessInspecting
+    private let processTerminator: any CoreProcessTerminating
+    private let portOwnerResolver: any CorePortOwnerResolving
     private var probedCoreVersions: [String: ProbedCoreVersion] = [:]
     private var loggedManagedCoreDecision = false
 
@@ -207,7 +226,9 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
 
     var isRunning: Bool {
         self.lock.withLock {
-            self.process?.isRunning == true
+            if self.process?.isRunning == true { return true }
+            guard let adopted = self.adoptedCore else { return false }
+            return self.isAdoptedCoreAlive(adopted)
         }
     }
 
@@ -216,11 +237,20 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
         fileManager: FileManager = .default,
         configValidationTimeout: TimeInterval = 10,
         lifecycleQueue: DispatchQueue? = nil,
-        validationQueue: DispatchQueue? = nil)
+        validationQueue: DispatchQueue? = nil,
+        processInspector: any CoreProcessInspecting = SystemCoreProcessInspector(),
+        processTerminator: any CoreProcessTerminating = SystemCoreProcessTerminator(),
+        portOwnerResolver: any CorePortOwnerResolving = SystemCorePortOwnerResolver())
     {
         self.workingDirectoryManager = workingDirectoryManager
         self.fileManager = fileManager
         self.configValidationTimeout = configValidationTimeout
+        self.runtimeStateStore = CoreRuntimeStateStore(
+            workingDirectoryManager: workingDirectoryManager,
+            fileManager: fileManager)
+        self.processInspector = processInspector
+        self.processTerminator = processTerminator
+        self.portOwnerResolver = portOwnerResolver
         self.lifecycleQueue = lifecycleQueue
             ?? DispatchQueue(label: "com.clashbar.mihomo-process.operations", qos: .userInitiated)
         self.validationQueue = validationQueue
@@ -300,15 +330,31 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
         if let runningPid = lock.withLock({ process?.isRunning == true ? process?.processIdentifier : nil }) {
             return .running(pid: runningPid)
         }
+        if let adoptedPid = self.liveAdoptedPID() {
+            return .running(pid: adoptedPid)
+        }
 
-        try Self.checkControllerPortAvailability(controller)
+        let configFingerprint: String
+        do {
+            configFingerprint = try CoreRuntimeState.fingerprint(ofContentsAt: configPath)
+        } catch {
+            throw CoreStartError.configInvalid(reason: error.localizedDescription)
+        }
+        try self.reconcileRuntimeState(
+            controller: controller,
+            configFingerprint: configFingerprint)
+        if let adoptedPid = self.liveAdoptedPID() {
+            return .running(pid: adoptedPid)
+        }
+
+        let binary = try self.resolveMihomoBinaryForStart()
+        try self.prepareControllerPortForStart(controller: controller, binaryPath: binary)
 
         self.lock.withLock {
             self.intentionalStop = false
             self.storedStatus = .starting
         }
 
-        let binary = try resolveMihomoBinary()
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: binary)
 
@@ -338,7 +384,17 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
             try proc.run()
             self.lock.withLock {
                 self.process = proc
+                self.adoptedCore = nil
                 self.storedStatus = .running(pid: proc.processIdentifier)
+            }
+            self.recordRuntimeState(
+                pid: proc.processIdentifier,
+                binaryPath: binary,
+                configPath: configPath,
+                configFingerprint: configFingerprint,
+                controller: controller)
+            if !self.isRunning {
+                self.runtimeStateStore.clear()
             }
             let startMessage =
                 "[mihomo started] pid=\(proc.processIdentifier) " +
@@ -355,8 +411,223 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
                 self.releasePipeHandlesLocked()
             }
             self.onLog?("[mihomo error] \(reason)")
-            throw error
+            throw CoreStartError.launchFailed(reason: error.localizedDescription)
         }
+    }
+
+    private func resolveMihomoBinaryForStart() throws -> String {
+        do {
+            return try self.resolveMihomoBinary()
+        } catch let error as MihomoBinaryResolutionError {
+            switch error {
+            case let .binaryNotFound(expectedDirectory):
+                throw CoreStartError.binaryMissing(expectedDirectory: expectedDirectory)
+            }
+        } catch {
+            throw CoreStartError.permissionDenied(reason: error.localizedDescription)
+        }
+    }
+
+    /// Stops a leftover instance of our own managed binary that still holds the
+    /// controller port, then verifies the port was released.
+    private func prepareControllerPortForStart(controller: String, binaryPath: String) throws {
+        guard Self.controllerPortHasListener(controller),
+              let port = Self.controllerPort(controller)
+        else { return }
+
+        let owner = self.portOwnerResolver.owner(port: port)
+        let expectedPath = CoreProcessIdentity.normalizedPath(binaryPath)
+        if let owner,
+           CoreProcessIdentity.normalizedPath(owner.executablePath) == expectedPath
+        {
+            let process = CoreProcessInfo(
+                pid: owner.pid,
+                startTime: owner.startTime,
+                executablePath: owner.executablePath,
+                uid: snapshotUID(pid: owner.pid))
+            self.onLog?("[mihomo reconcile] stopping own orphan pid=\(owner.pid)")
+            do {
+                try self.processTerminator.terminate(process, gracePeriod: 2.0)
+            } catch {
+                throw CoreStartError.staleCoreTerminationFailed(
+                    pid: owner.pid,
+                    reason: error.localizedDescription,
+                    helperOutdated: !ProxyHelperInstaller.installedHelperIsCurrent())
+            }
+            guard self.waitForControllerPortToBeFree(controller, timeout: 2.0) else {
+                throw CoreStartError.portConflict(
+                    controller: controller,
+                    port: port,
+                    owner: self.portOwnerResolver.owner(port: port))
+            }
+            return
+        }
+
+        throw CoreStartError.portConflict(controller: controller, port: port, owner: owner)
+    }
+
+    private func snapshotUID(pid: Int32) -> UInt32 {
+        self.processInspector.snapshot(pid: pid)?.uid ?? UInt32.max
+    }
+
+    /// Reconciles the core this app left behind in a previous run.
+    ///
+    /// A live core that still matches the requested config is adopted so the
+    /// user's connections survive. A live core with a stale config is stopped
+    /// first, which needs the privileged helper because TUN mode makes mihomo
+    /// run as root.
+    private func reconcileRuntimeState(controller: String, configFingerprint: String) throws {
+        guard let recorded = self.runtimeStateStore.load() else { return }
+
+        let snapshot = self.processInspector.snapshot(pid: recorded.pid)
+        var resolution = CoreRuntimeStateEvaluator.resolve(
+            recorded: recorded,
+            bootIdentifier: self.processInspector.bootIdentifier,
+            process: snapshot,
+            expectedController: controller,
+            configFingerprint: configFingerprint)
+        if resolution == .adopt, !self.controllerIsReady(controller, timeout: 1.5) {
+            resolution = .replace
+        }
+
+        switch resolution {
+        case .none, .ignore:
+            self.runtimeStateStore.clear()
+        case .adopt:
+            guard let snapshot else { return }
+            self.lock.withLock {
+                self.adoptedCore = CoreProcessInfo(
+                    pid: recorded.pid,
+                    startTime: recorded.processStartTime,
+                    executablePath: recorded.binaryPath,
+                    uid: snapshot.uid)
+                self.intentionalStop = false
+                self.storedStatus = .running(pid: recorded.pid)
+            }
+            self.onLog?(
+                "[mihomo adopted] pid=\(recorded.pid) controller=\(recorded.controller) "
+                    + "binary=\(recorded.binaryPath)")
+        case .replace:
+            guard let snapshot else { return }
+            self.onLog?("[mihomo reconcile] stopping stale core pid=\(recorded.pid)")
+            let process = CoreProcessInfo(
+                pid: recorded.pid,
+                startTime: recorded.processStartTime,
+                executablePath: recorded.binaryPath,
+                uid: snapshot.uid)
+            do {
+                try self.processTerminator.terminate(process, gracePeriod: 2.0)
+            } catch {
+                throw CoreStartError.staleCoreTerminationFailed(
+                    pid: recorded.pid,
+                    reason: error.localizedDescription,
+                    helperOutdated: !ProxyHelperInstaller.installedHelperIsCurrent())
+            }
+            self.runtimeStateStore.clear()
+            guard self.waitForControllerPortToBeFree(controller, timeout: 2.0) else {
+                let port = Self.controllerPort(controller) ?? 0
+                throw CoreStartError.portConflict(
+                    controller: controller,
+                    port: port,
+                    owner: self.portOwnerResolver.owner(port: port))
+            }
+            self.onLog?("[mihomo reconcile] stale core stopped pid=\(recorded.pid)")
+        }
+    }
+
+    private func liveAdoptedPID() -> Int32? {
+        let adopted: CoreProcessInfo? = self.lock.withLock {
+            guard let adopted = self.adoptedCore else { return nil }
+            if self.isAdoptedCoreAlive(adopted) {
+                return adopted
+            }
+            self.adoptedCore = nil
+            self.storedStatus = .stopped
+            return nil
+        }
+        guard let adopted else {
+            return nil
+        }
+        return adopted.pid
+    }
+
+    private func isAdoptedCoreAlive(_ adopted: CoreProcessInfo) -> Bool {
+        self.processInspector.snapshot(pid: adopted.pid)?.startTime == adopted.startTime
+    }
+
+    private func recordRuntimeState(
+        pid: Int32,
+        binaryPath: String,
+        configPath: String,
+        configFingerprint: String,
+        controller: String)
+    {
+        guard let snapshot = self.processInspector.snapshot(pid: pid) else {
+            self.onLog?("[mihomo runtime state] skipped: cannot inspect pid \(pid)")
+            return
+        }
+        let state = CoreRuntimeState(
+            schemaVersion: CoreRuntimeState.currentSchemaVersion,
+            bootIdentifier: self.processInspector.bootIdentifier,
+            pid: pid,
+            processStartTime: snapshot.startTime,
+            binaryPath: snapshot.executablePath ?? binaryPath,
+            configPath: configPath,
+            configFingerprint: configFingerprint,
+            controller: controller)
+        do {
+            try self.runtimeStateStore.save(state)
+        } catch {
+            self.onLog?("[mihomo runtime state] failed to save: \(error.localizedDescription)")
+        }
+    }
+
+    private func waitForControllerPortToBeFree(_ controller: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !Self.controllerPortHasListener(controller) { return true }
+            usleep(50_000)
+        }
+        return !Self.controllerPortHasListener(controller)
+    }
+
+    /// A listener is not proof of a healthy core; wait briefly for an HTTP
+    /// response before adopting a previous instance.
+    private func controllerIsReady(_ controller: String, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if Self.controllerResponds(controller) { return true }
+            usleep(100_000)
+        } while Date() < deadline
+        return Self.controllerResponds(controller)
+    }
+
+    private static func controllerResponds(_ controller: String) -> Bool {
+        guard var components = URLComponents(string: "http://" + controller) else { return false }
+        switch components.host {
+        case "0.0.0.0", "::", "":
+            components.host = "127.0.0.1"
+        default:
+            break
+        }
+        guard let url = components.url?.appendingPathComponent("version") else { return false }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 1
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.connectionProxyDictionary = [:]
+        configuration.timeoutIntervalForRequest = 1
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+
+        let semaphore = DispatchSemaphore(value: 0)
+        let box = HTTPProbeBox()
+        session.dataTask(with: request) { _, response, _ in
+            box.store(response is HTTPURLResponse)
+            semaphore.signal()
+        }.resume()
+        guard semaphore.wait(timeout: .now() + 1.5) == .success else { return false }
+        return box.load()
     }
 
     @discardableResult
@@ -367,6 +638,11 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
     }
 
     func stop() {
+        if let adopted = self.lock.withLock({ self.adoptedCore }) {
+            self.stopAdoptedCore(adopted, gracePeriod: 2.0)
+            return
+        }
+
         let running: Process? = self.lock.withLock {
             self.intentionalStop = true
             return self.process
@@ -401,6 +677,11 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
     }
 
     func stopImmediately() {
+        if let adopted = self.lock.withLock({ self.adoptedCore }) {
+            self.stopAdoptedCore(adopted, gracePeriod: 0.4)
+            return
+        }
+
         let running: Process? = self.lock.withLock {
             self.intentionalStop = true
             return self.process
@@ -467,6 +748,7 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
         }
 
         guard outcome.handled else { return }
+        self.runtimeStateStore.clear()
 
         if outcome.intentional {
             self.onLog?("[mihomo stopped] exit=\(code)")
@@ -474,6 +756,32 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
             self.onLog?("[mihomo terminated] exit=\(code)")
             self.onTermination?(code)
         }
+    }
+
+    private func stopAdoptedCore(_ adopted: CoreProcessInfo, gracePeriod: TimeInterval) {
+        self.lock.withLock { self.intentionalStop = true }
+        self.onLog?("[mihomo stop] terminate signal sent pid=\(adopted.pid) (adopted)")
+
+        do {
+            try self.processTerminator.terminate(adopted, gracePeriod: gracePeriod)
+        } catch {
+            let reason = "Failed to stop adopted mihomo: \(error.localizedDescription)"
+            self.lock.withLock {
+                self.intentionalStop = false
+                self.storedStatus = .failed(reason: reason)
+            }
+            self.onLog?("[mihomo error] \(reason)")
+            return
+        }
+
+        self.runtimeStateStore.clear()
+        self.lock.withLock {
+            self.adoptedCore = nil
+            self.intentionalStop = false
+            self.storedStatus = .stopped
+            self.releasePipeHandlesLocked()
+        }
+        self.onLog?("[mihomo stopped] adopted pid=\(adopted.pid)")
     }
 
     private func waitForProcessExit(_ process: Process, timeout: TimeInterval) -> Bool {
@@ -858,25 +1166,42 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
         }
     }
 
-    static func checkControllerPortAvailability(_ controller: String) throws {
-        if self.controllerPortHasListener(controller) {
-            throw POSIXError(.EADDRINUSE)
-        }
+    static func controllerPortConflict(_ controller: String, owner: CorePortOwner?) -> CoreStartError? {
+        guard self.controllerPortHasListener(controller),
+              let port = self.controllerPort(controller)
+        else { return nil }
+        return .portConflict(controller: controller, port: port, owner: owner)
     }
 
-    static func controllerPortHasListener(_ controller: String) -> Bool {
+    private static func controllerPort(_ controller: String) -> Int? {
+        self.controllerEndpoint(controller)?.port
+    }
+
+    private static func controllerEndpoint(
+        _ controller: String) -> (host: String?, port: Int, wildcard: Bool)?
+    {
         guard let components = URLComponents(string: "http://" + controller),
               let port = components.port,
               (1...65_535).contains(port)
-        else { return false }
+        else { return nil }
         let host = components.host?.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         let wildcard = host == nil || host?.isEmpty == true || host == "0.0.0.0" || host == "::"
+        return (host, port, wildcard)
+    }
+
+    static func controllerPortHasListener(_ controller: String) -> Bool {
+        guard let endpoint = self.controllerEndpoint(controller) else { return false }
+        let port = endpoint.port
         var hints = addrinfo()
-        hints.ai_flags = wildcard ? AI_PASSIVE : 0
+        hints.ai_flags = endpoint.wildcard ? AI_PASSIVE : 0
         hints.ai_socktype = SOCK_STREAM
         var interfaces: UnsafeMutablePointer<addrinfo>?
-        guard getaddrinfo(host?.isEmpty == true ? nil : host, String(port), &hints, &interfaces) == 0,
-              let first = interfaces
+        guard getaddrinfo(
+            endpoint.host?.isEmpty == true ? nil : endpoint.host,
+            String(port),
+            &hints,
+            &interfaces) == 0,
+            let first = interfaces
         else { return false }
         defer { freeaddrinfo(first) }
 
@@ -884,7 +1209,7 @@ final class MihomoProcessManager: MihomoControlling, @unchecked Sendable {
         while let pointer = next {
             let address = pointer.pointee
             next = address.ai_next
-            if wildcard {
+            if endpoint.wildcard {
                 if self.localInterfacesHaveListener(family: address.ai_family, port: port) { return true }
             } else if self.localInterfacesHaveListener(
                 family: address.ai_family, port: port, matching: address.ai_addr)
